@@ -2,12 +2,17 @@
 Pytest configuration and fixtures for pexpect-based CLI tests.
 """
 
+import os
 import shutil
 import subprocess
 import uuid
 from pathlib import Path
 
 import pytest
+
+
+# Set container prefix for all tests to avoid interfering with user's active sessions
+os.environ["COI_CONTAINER_PREFIX"] = "coi-test-"
 
 
 @pytest.fixture(scope="session")

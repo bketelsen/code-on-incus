@@ -212,4 +212,4 @@ jobs:
       if: always()
       run: |
         echo "Cleaning up test containers..."
-        sg incus-admin -c "incus list --format csv | grep claude- | cut -d, -f1 | xargs -r -n1 incus delete --force" || true
+        sg incus-admin -c "incus list --format csv | grep coi-test- | cut -d, -f1 | xargs -r -n1 incus delete --force" || true

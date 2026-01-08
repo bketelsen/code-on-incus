@@ -3,6 +3,7 @@ package session
 import (
 	"crypto/sha256"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -10,6 +11,17 @@ import (
 
 	"github.com/mensfeld/claude-on-incus/internal/container"
 )
+
+// getContainerPrefix returns the container prefix to use.
+// Checks COI_CONTAINER_PREFIX environment variable first, defaults to "claude-".
+// This allows tests to use a different prefix (e.g., "coi-test-") to avoid
+// interfering with user's active sessions.
+func getContainerPrefix() string {
+	if prefix := os.Getenv("COI_CONTAINER_PREFIX"); prefix != "" {
+		return prefix
+	}
+	return "claude-"
+}
 
 // WorkspaceHash generates a short hash from workspace path
 // Returns first 8 characters of SHA256 hash
@@ -25,10 +37,12 @@ func WorkspaceHash(workspacePath string) string {
 }
 
 // ContainerName generates a container name from workspace and slot
-// Format: claude-<workspace-hash>-<slot>
+// Format: <prefix><workspace-hash>-<slot> where prefix defaults to "claude-"
+// Can be customized via COI_CONTAINER_PREFIX environment variable
 func ContainerName(workspacePath string, slot int) string {
 	hash := WorkspaceHash(workspacePath)
-	return fmt.Sprintf("claude-%s-%d", hash, slot)
+	prefix := getContainerPrefix()
+	return fmt.Sprintf("%s%s-%d", prefix, hash, slot)
 }
 
 // AllocateSlot finds the next available slot for a workspace
@@ -39,7 +53,7 @@ func AllocateSlot(workspacePath string, maxSlots int) (int, error) {
 	}
 
 	hash := WorkspaceHash(workspacePath)
-	prefix := fmt.Sprintf("claude-%s-", hash)
+	prefix := fmt.Sprintf("%s%s-", getContainerPrefix(), hash)
 
 	// Get all containers matching our workspace
 	output, err := container.IncusOutput("list", "--format=json")
@@ -86,7 +100,7 @@ func AllocateSlotFrom(workspacePath string, startSlot, maxSlots int) (int, error
 	}
 
 	hash := WorkspaceHash(workspacePath)
-	prefix := fmt.Sprintf("claude-%s-", hash)
+	prefix := fmt.Sprintf("%s%s-", getContainerPrefix(), hash)
 
 	// Get all containers matching our workspace
 	output, err := container.IncusOutput("list", "--format=json")
@@ -138,7 +152,8 @@ func IsSlotAvailable(workspacePath string, slot int) (bool, error) {
 // ParseContainerName extracts workspace hash and slot from container name
 // Returns (hash, slot, error)
 func ParseContainerName(containerName string) (string, int, error) {
-	re := regexp.MustCompile(`^claude-([a-f0-9]{8})-(\d+)$`)
+	prefix := regexp.QuoteMeta(getContainerPrefix())
+	re := regexp.MustCompile(fmt.Sprintf(`^%s([a-f0-9]{8})-(\d+)$`, prefix))
 	matches := re.FindStringSubmatch(containerName)
 	if len(matches) != 3 {
 		return "", 0, fmt.Errorf("invalid container name format: %s", containerName)
@@ -157,7 +172,7 @@ func ParseContainerName(containerName string) (string, int, error) {
 // Returns map of slot -> container name
 func ListWorkspaceSessions(workspacePath string) (map[int]string, error) {
 	hash := WorkspaceHash(workspacePath)
-	prefix := fmt.Sprintf("claude-%s-", hash)
+	prefix := fmt.Sprintf("%s%s-", getContainerPrefix(), hash)
 
 	output, err := container.IncusOutput("list", "--format=json")
 	if err != nil {

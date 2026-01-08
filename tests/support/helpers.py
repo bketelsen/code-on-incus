@@ -460,10 +460,13 @@ def get_container_list():
         return []
 
 
-def cleanup_all_test_containers(pattern="claude-"):
+def cleanup_all_test_containers(pattern="coi-test-"):
     """
     Clean up all containers matching pattern.
-    Default cleans all claude-* containers.
+    Default cleans coi-test-* containers ONLY (not user's active sessions).
+
+    IMPORTANT: This should NEVER clean up containers with 'claude-' prefix
+    to avoid interfering with user's active sessions.
     """
     containers = get_container_list()
     test_containers = [c for c in containers if c.startswith(pattern)]
