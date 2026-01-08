@@ -1,4 +1,4 @@
-.PHONY: build install clean test test-coverage test-unit test-python-setup test-python test-python-debug test-python-cli lint lint-python fmt tidy help
+.PHONY: build install clean test test-coverage test-unit integrations-setup integrations integrations-debug integrations-cli lint lint-python fmt tidy help
 
 # Binary name
 BINARY_NAME=coi
@@ -48,15 +48,15 @@ test:
 	@echo "Running unit tests..."
 	$(GOTEST) -v -race -short ./...
 
-# Setup Python test dependencies
-test-python-setup:
-	@echo "Installing Python test dependencies..."
+# Setup integration test dependencies
+integrations-setup:
+	@echo "Installing integration test dependencies..."
 	@pip install -r tests/support/requirements.txt
 	@pip install ruff
 
-# Run Python integration tests (requires Incus)
-test-python: build
-	@echo "Running Python integration tests..."
+# Run integration tests (requires Incus)
+integrations: build
+	@echo "Running integration tests..."
 	@if groups | grep -q incus-admin; then \
 		pytest tests/ -v; \
 	else \
@@ -64,9 +64,9 @@ test-python: build
 		sg incus-admin -c "pytest tests/ -v"; \
 	fi
 
-# Run Python tests with output (for debugging)
-test-python-debug: build
-	@echo "Running Python tests with output..."
+# Run integration tests with output (for debugging)
+integrations-debug: build
+	@echo "Running integration tests with output..."
 	@if groups | grep -q incus-admin; then \
 		pytest tests/ -v -s; \
 	else \
@@ -74,9 +74,9 @@ test-python-debug: build
 		sg incus-admin -c "pytest tests/ -v -s"; \
 	fi
 
-# Run only Python CLI tests (no Incus required)
-test-python-cli:
-	@echo "Running Python CLI tests..."
+# Run only CLI tests (no Incus required)
+integrations-cli:
+	@echo "Running CLI integration tests..."
 	@pytest tests/cli/ -v
 
 # Lint Python tests
@@ -153,11 +153,11 @@ help:
 	@echo "  test-unit     - Same as test"
 	@echo "  test-coverage - Unit tests with coverage report"
 	@echo ""
-	@echo "Testing (Python):"
-	@echo "  test-python-setup - Install Python test dependencies"
-	@echo "  test-python       - Run Python integration tests (requires Incus)"
-	@echo "  test-python-debug - Run Python tests with output (for debugging)"
-	@echo "  test-python-cli   - Run Python CLI tests only (no Incus required)"
+	@echo "Testing (Integration):"
+	@echo "  integrations-setup - Install integration test dependencies"
+	@echo "  integrations       - Run integration tests (requires Incus)"
+	@echo "  integrations-debug - Run integration tests with output (for debugging)"
+	@echo "  integrations-cli   - Run CLI integration tests only (no Incus required)"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  fmt         - Format Go code"
