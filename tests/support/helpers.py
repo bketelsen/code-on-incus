@@ -415,6 +415,11 @@ def exit_claude(child, timeout=60):
     try:
         child.expect(EOF, timeout=timeout)
 
+        # Give monitor/output time to capture cleanup messages
+        # The coi process prints cleanup messages before exiting,
+        # but we need to give the monitor thread time to read and display them
+        time.sleep(2)
+
         # Wait for process to fully exit and populate exitstatus
         # This is required - expect(EOF) only means we got EOF from the process,
         # but the process may not have fully terminated yet.
