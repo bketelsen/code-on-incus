@@ -122,10 +122,10 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	defer func() {
 		if !persistent {
 			fmt.Fprintf(os.Stderr, "Cleaning up container %s...\n", containerName)
-			mgr.Delete(true)
+			_ = mgr.Delete(true) // Best effort cleanup
 		} else {
 			fmt.Fprintf(os.Stderr, "Stopping persistent container %s...\n", containerName)
-			mgr.Stop(false)
+			_ = mgr.Stop(false) // Best effort stop
 		}
 	}()
 
