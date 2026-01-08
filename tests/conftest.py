@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-
 # Set container prefix for all tests to avoid interfering with user's active sessions
 os.environ["COI_CONTAINER_PREFIX"] = "coi-test-"
 
