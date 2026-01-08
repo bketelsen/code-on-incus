@@ -36,16 +36,19 @@ def test_no_mount_shows_initial_setup(coi_binary, cleanup_containers, workspace_
     wait_for_container_ready(child)
 
     with with_live_screen(child) as monitor:
-        # Wait longer for initial setup to appear
-        time.sleep(5)
+        # Wait for initial setup to appear
+        time.sleep(10)
 
-        # Check for initial Claude setup prompts
-        # These prompts should appear when Claude runs for the first time
+        # Check for initial Claude setup prompts by looking for the text style option
+        # The setup screen shows "Light mode", "Dark mode", etc.
         setup_found = (
-            wait_for_text_in_monitor(monitor, "Choose the text style", timeout=30)
-            or wait_for_text_in_monitor(monitor, "No, exit", timeout=5)
-            or wait_for_text_in_monitor(monitor, "Yes, I accept", timeout=5)
+            wait_for_text_in_monitor(monitor, "Light mode", timeout=30)
+            or wait_for_text_in_monitor(monitor, "Dark mode", timeout=5)
         )
+
+        if not setup_found:
+            # Debug: print what we actually see
+            print(f"\nScreen content:\n{monitor.last_display}\n")
 
         assert setup_found, (
             "Expected initial Claude setup prompts to appear with --mount-claude-config=false, "
