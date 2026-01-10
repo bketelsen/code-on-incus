@@ -34,24 +34,28 @@ def workspace_dir(tmp_path):
 
 
 @pytest.fixture
-def cleanup_containers():
+def cleanup_containers(workspace_dir, coi_binary):
     """Cleanup test containers after each test."""
+    # Import here to avoid circular imports
+    from support.helpers import calculate_container_name, get_container_list
+
     yield
 
-    # Cleanup any test containers that may be left over
-    result = subprocess.run(
-        ["sg", "incus-admin", "-c", "incus list --format=csv -c n"],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode == 0:
-        containers = result.stdout.strip().split('\n')
-        for container in containers:
-            if container.startswith("coi-test-"):
-                subprocess.run(
-                    ["sg", "incus-admin", "-c", f"incus delete --force {container}"],
-                    check=False,
-                )
+    # Calculate container names for this workspace (slots 1-10)
+    workspace_containers = set()
+    for slot in range(1, 11):
+        workspace_containers.add(calculate_container_name(workspace_dir, slot))
+
+    # Get all running containers and delete any that belong to this test's workspace
+    containers = get_container_list()
+    for container in containers:
+        if container in workspace_containers:
+            subprocess.run(
+                [coi_binary, "container", "delete", container, "--force"],
+                capture_output=True,
+                timeout=30,
+                check=False,
+            )
 
 
 @pytest.fixture(scope="session")
