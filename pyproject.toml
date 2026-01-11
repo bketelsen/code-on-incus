@@ -45,4 +45,5 @@ norecursedirs = ["tests/support"]
 # Add tests dir to pythonpath so imports work without __init__.py
 pythonpath = ["tests"]
 # Disable cache to avoid __pycache__ directories
-addopts = "-p no:cacheprovider"
+# Enable random test order to catch ordering dependencies
+addopts = "-p no:cacheprovider -p randomly"
