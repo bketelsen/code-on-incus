@@ -137,7 +137,7 @@ func (b *Builder) launchBuildContainer() error {
 func (b *Builder) waitForNetwork() error {
 	b.opts.Logger("Waiting for network...")
 
-	maxAttempts := 30
+	maxAttempts := 180 // 3 minutes - increased for slower CI environments
 	for i := 0; i < maxAttempts; i++ {
 		// Use ping instead of curl (curl not installed in fresh ubuntu containers)
 		_, err := b.mgr.ExecCommand("ping -c 1 -W 2 archive.ubuntu.com", container.ExecCommandOptions{
