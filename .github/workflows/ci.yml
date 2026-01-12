@@ -76,8 +76,19 @@ jobs:
 
       - name: Initialize Incus
         run: |
+          # Wait for Incus service to be ready
+          echo "Waiting for Incus service..."
+          sudo systemctl start incus.socket || true
+          sleep 5
+
           # Initialize Incus with default settings
           sudo incus admin init --auto
+
+          # Allow access without re-login by changing socket permissions
+          sudo chmod 666 /var/lib/incus/unix.socket
+
+          # Add current user to incus-admin group
+          sudo usermod -aG incus-admin $USER
 
           # Verify network and profile configuration
           echo "=== Incus network configuration ==="
@@ -100,12 +111,6 @@ jobs:
 
           echo "=== Updated incusbr0 configuration ==="
           incus network show incusbr0
-
-          # Add current user to incus-admin group
-          sudo usermod -aG incus-admin $USER
-
-          # Allow access without re-login by changing socket permissions
-          sudo chmod 666 /var/lib/incus/unix.socket
 
       - name: Fix networking for Incus
         run: |
@@ -361,7 +366,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/coi-image.tar.gz
-          key: ${{ runner.os }}-coi-image-${{ hashFiles('internal/image/**', 'testdata/fake-claude/**') }}
+          key: ${{ runner.os }}-coi-image-${{ hashFiles('internal/image/**', 'testdata/dummy/**') }}
 
       - name: Restore COI image from cache
         if: steps.cache-coi-image.outputs.cache-hit == 'true'
