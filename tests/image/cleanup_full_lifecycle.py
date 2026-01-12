@@ -36,8 +36,7 @@ def test_cleanup_keeps_recent_versions(coi_binary, cleanup_containers, workspace
         text=True,
         timeout=120,
     )
-    assert result.returncode == 0, \
-        f"Container launch should succeed. stderr: {result.stderr}"
+    assert result.returncode == 0, f"Container launch should succeed. stderr: {result.stderr}"
 
     time.sleep(3)
 
@@ -47,15 +46,14 @@ def test_cleanup_keeps_recent_versions(coi_binary, cleanup_containers, workspace
         text=True,
         timeout=60,
     )
-    assert result.returncode == 0, \
-        f"Container stop should succeed. stderr: {result.stderr}"
+    assert result.returncode == 0, f"Container stop should succeed. stderr: {result.stderr}"
 
     time.sleep(2)
 
     # === Phase 2: Create 3 versioned images ===
 
     created_images = []
-    for i in range(3):
+    for _i in range(3):
         # Create image with timestamp-like suffix (YYYYMMDD-HHMMSS format)
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         image_name = f"{image_prefix}{timestamp}"
@@ -97,12 +95,12 @@ def test_cleanup_keeps_recent_versions(coi_binary, cleanup_containers, workspace
         text=True,
         timeout=60,
     )
-    assert result.returncode == 0, \
-        f"Cleanup should succeed. stderr: {result.stderr}"
+    assert result.returncode == 0, f"Cleanup should succeed. stderr: {result.stderr}"
 
     combined_output = result.stdout + result.stderr
-    assert "Cleanup complete" in combined_output, \
+    assert "Cleanup complete" in combined_output, (
         f"Should show cleanup complete. Got:\n{combined_output}"
+    )
 
     # === Phase 4: Verify only 1 remains ===
 
@@ -122,8 +120,9 @@ def test_cleanup_keeps_recent_versions(coi_binary, cleanup_containers, workspace
                 timeout=60,
             )
 
-    assert remaining_count == 1, \
+    assert remaining_count == 1, (
         f"Should have exactly 1 image remaining after cleanup. Got: {remaining_count}"
+    )
 
     # === Phase 5: Cleanup container ===
 

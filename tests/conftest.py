@@ -90,34 +90,24 @@ def dummy_image(coi_binary):
     image_name = "coi-test-dummy"
 
     # Check if image already exists
-    result = subprocess.run(
-        [coi_binary, "image", "exists", image_name],
-        capture_output=True
-    )
+    result = subprocess.run([coi_binary, "image", "exists", image_name], capture_output=True)
 
     if result.returncode == 0:
         return image_name  # Already built
 
     # Build image with dummy
-    script_path = os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "testdata",
-        "dummy",
-        "install.sh"
-    )
+    script_path = os.path.join(os.path.dirname(__file__), "..", "testdata", "dummy", "install.sh")
 
     if not os.path.exists(script_path):
         pytest.skip(f"Dummy install script not found: {script_path}")
 
-    print(f"\nBuilding test image with dummy (one-time setup)...")
+    print("\nBuilding test image with dummy (one-time setup)...")
 
     result = subprocess.run(
-        [coi_binary, "build", "custom", image_name,
-         "--script", script_path],
+        [coi_binary, "build", "custom", image_name, "--script", script_path],
         capture_output=True,
         text=True,
-        timeout=300
+        timeout=300,
     )
 
     if result.returncode != 0:

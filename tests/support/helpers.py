@@ -165,7 +165,7 @@ def spawn_coi(
         pexpect.spawn object
     """
     # Build command
-    cmd_args = [binary_path] + args
+    cmd_args = [binary_path, *args]
 
     # Merge environment
     env = os.environ.copy() if env is None else {**os.environ.copy(), **env}
@@ -833,9 +833,7 @@ def wait_for_any_text_on_screen(child, texts, timeout=30, poll_interval=0.1):
         TypeError: If logfile_read is not a TerminalEmulator
     """
     if not isinstance(child.logfile_read, TerminalEmulator):
-        raise TypeError(
-            "wait_for_any_text_on_screen requires TerminalEmulator."
-        )
+        raise TypeError("wait_for_any_text_on_screen requires TerminalEmulator.")
 
     start_time = time.time()
 

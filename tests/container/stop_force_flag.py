@@ -12,7 +12,6 @@ import time
 
 from support.helpers import (
     calculate_container_name,
-    get_container_list,
 )
 
 
@@ -37,8 +36,7 @@ def test_stop_force_flag(coi_binary, cleanup_containers, workspace_dir):
         timeout=120,
     )
 
-    assert result.returncode == 0, \
-        f"Container launch should succeed. stderr: {result.stderr}"
+    assert result.returncode == 0, f"Container launch should succeed. stderr: {result.stderr}"
 
     time.sleep(3)
 
@@ -50,8 +48,7 @@ def test_stop_force_flag(coi_binary, cleanup_containers, workspace_dir):
         timeout=30,
     )
 
-    assert result.returncode == 0, \
-        f"Container should be running"
+    assert result.returncode == 0, "Container should be running"
 
     # === Phase 2: Force stop container ===
 
@@ -64,12 +61,12 @@ def test_stop_force_flag(coi_binary, cleanup_containers, workspace_dir):
     )
     stop_time = time.time()
 
-    assert result.returncode == 0, \
-        f"Container force stop should succeed. stderr: {result.stderr}"
+    assert result.returncode == 0, f"Container force stop should succeed. stderr: {result.stderr}"
 
     # Force stop should be relatively quick (less than 30 seconds)
-    assert stop_time - start_time < 30, \
+    assert stop_time - start_time < 30, (
         f"Force stop should be quick, took {stop_time - start_time:.1f}s"
+    )
 
     time.sleep(2)
 
@@ -82,8 +79,7 @@ def test_stop_force_flag(coi_binary, cleanup_containers, workspace_dir):
         timeout=30,
     )
 
-    assert result.returncode != 0, \
-        "Force stopped container should not be running"
+    assert result.returncode != 0, "Force stopped container should not be running"
 
     # === Phase 4: Cleanup ===
 
