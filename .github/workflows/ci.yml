@@ -88,6 +88,15 @@ jobs:
           sudo systemctl start incus.socket || true
           sleep 5
 
+          # Configure subuid/subgid for UID mapping (needed for raw.idmap)
+          # Map runner UID 1001 to be available for container remapping
+          echo "root:1001:1" | sudo tee -a /etc/subuid
+          echo "root:1001:1" | sudo tee -a /etc/subgid
+
+          # Restart Incus to pick up subuid/subgid changes
+          sudo systemctl restart incus || true
+          sleep 5
+
           # Initialize Incus with btrfs storage (faster than default dir storage)
           # Using preseed for explicit configuration
           cat <<EOF | sudo incus admin init --preseed
@@ -127,6 +136,19 @@ jobs:
           # Ensure NAT is enabled on the bridge
           incus network set incusbr0 ipv4.nat=true
           incus network set incusbr0 ipv6.nat=true
+
+      - name: Check kernel idmap support
+        run: |
+          echo "Kernel version:"
+          uname -r
+          echo "Checking for idmapped mount support:"
+          grep -i idmap /proc/filesystems || echo "No idmap in /proc/filesystems"
+          echo "Checking btrfs features:"
+          sudo btrfs filesystem df /var/lib/incus/storage-pools/default || true
+          echo "AppArmor status:"
+          sudo aa-status | grep incus || echo "No incus AppArmor profiles"
+          echo "Checking if AppArmor is blocking bind mounts:"
+          sudo dmesg | grep -i "apparmor.*denied" | tail -20 || echo "No recent AppArmor denials"
 
       - name: Configure networking for Incus
         run: |
@@ -172,6 +194,45 @@ jobs:
           go build -o coi ./cmd/coi
           ./coi version
 
+      - name: Test bind mount functionality
+        run: |
+          echo "Testing if bind mounts work with shift=true..."
+
+          # Create test directory and file
+          mkdir -p /tmp/test-bind-mount
+          echo "test-content" > /tmp/test-bind-mount/test-file.txt
+
+          # Launch test container
+          incus launch images:ubuntu/22.04 test-bind-mount-container
+          sleep 5
+
+          # Add bind mount with shift=true
+          incus config device add test-bind-mount-container testmount disk source=/tmp/test-bind-mount path=/mnt/test shift=true
+
+          # Check if file is visible inside container
+          echo "Files in container /mnt/test:"
+          incus exec test-bind-mount-container -- ls -la /mnt/test/
+
+          # Try to read the file
+          echo "Reading file from container:"
+          incus exec test-bind-mount-container -- cat /mnt/test/test-file.txt || echo "FAILED: Cannot read file in container"
+
+          # Try to create a file from inside container
+          incus exec test-bind-mount-container -- sh -c 'echo "created-from-container" > /mnt/test/created.txt'
+
+          # Check if file appears on host
+          if [ -f /tmp/test-bind-mount/created.txt ]; then
+            echo "SUCCESS: File created in container is visible on host"
+            cat /tmp/test-bind-mount/created.txt
+          else
+            echo "FAILED: File created in container NOT visible on host"
+            ls -la /tmp/test-bind-mount/
+          fi
+
+          # Cleanup
+          incus delete test-bind-mount-container --force
+          rm -rf /tmp/test-bind-mount
+
       - name: Cache COI image
         id: cache-coi-image
         uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
@@ -197,15 +258,9 @@ jobs:
 
       - name: Run integration tests
         run: |
-          # Temporarily run only failing tests for faster iteration
-          python -m pytest \
-            tests/shell/persistent/custom_mount_persistent.py::test_custom_mount_persistent \
-            tests/attach/attach_to_persistent.py::test_attach_to_persistent \
-            tests/shell/ephemeral/workspace_files_persist_ephemeral.py::test_workspace_files_persist_ephemeral \
-            tests/shell/ephemeral/uid_mapping_correct_ephemeral.py::test_uid_mapping_correct \
-            tests/attach/attach_after_detach.py::test_attach_after_detach \
-            -v --tb=short
-          # TODO: Once these pass, restore to: python -m pytest tests/ -v --tb=short
+          # Run all integration tests
+          # Tests marked with @pytest.mark.skipif will be automatically skipped in CI
+          python -m pytest tests/ -v --tb=short
         env:
           COI_BINARY: ./coi
 

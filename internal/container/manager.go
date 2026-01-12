@@ -83,6 +83,7 @@ func (m *Manager) MountDisk(name, source, path string, shift bool) error {
 	if shift {
 		args = append(args, "shift=true")
 	}
+
 	return IncusExec(args...)
 }
 
@@ -95,6 +96,11 @@ func (m *Manager) Exec(args ...string) error {
 // ExecArgs executes command arguments in the container with options
 func (m *Manager) ExecArgs(commandArgs []string, opts ExecCommandOptions) error {
 	args := []string{"exec", m.ContainerName}
+
+	// Add force-interactive flag for interactive sessions (required for tmux attach)
+	if opts.Interactive {
+		args = append(args, "--force-interactive")
+	}
 
 	// Add environment variables
 	for k, v := range opts.Env {
@@ -120,6 +126,11 @@ func (m *Manager) ExecArgs(commandArgs []string, opts ExecCommandOptions) error 
 	args = append(args, "--")
 	args = append(args, commandArgs...)
 
+	// Support interactive mode
+	if opts.Interactive {
+		return IncusExecInteractive(args...)
+	}
+
 	return IncusExec(args...)
 }
 
@@ -136,6 +147,11 @@ type ExecCommandOptions struct {
 // ExecCommand executes a bash command in the container with user context
 func (m *Manager) ExecCommand(command string, opts ExecCommandOptions) (string, error) {
 	args := []string{"exec", m.ContainerName}
+
+	// Add force-interactive flag for interactive sessions (required for tmux attach)
+	if opts.Interactive {
+		args = append(args, "--force-interactive")
+	}
 
 	// Add environment variables
 	for k, v := range opts.Env {

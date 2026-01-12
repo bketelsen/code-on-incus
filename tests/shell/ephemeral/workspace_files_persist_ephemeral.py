@@ -8,6 +8,7 @@ Tests that:
 4. Verify file still exists on host
 """
 
+import os
 import subprocess
 import time
 
@@ -74,6 +75,50 @@ def test_workspace_files_persist_ephemeral(coi_binary, cleanup_containers, works
         child.send("\x0d")
         file_created = wait_for_text_in_monitor(monitor, test_content, timeout=10)
         assert file_created, "Should create file in /workspace"
+
+    # === Phase 2.5: DEBUG - Check if file is visible on host while container is running ===
+    import os
+    file_path_check = os.path.join(workspace_dir, test_filename)
+    file_exists_on_host = os.path.exists(file_path_check)
+    print(f"\n=== DEBUG BEFORE SHUTDOWN ===")
+    print(f"File created in container: {file_created}")
+    print(f"File visible on host: {file_exists_on_host}")
+    print(f"File path: {file_path_check}")
+
+    # Check container's workspace mount using incus directly
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["incus", "config", "device", "list", container_name],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        print(f"Container devices:\n{result.stdout}")
+
+        # Get full device config for workspace
+        result2 = subprocess.run(
+            ["incus", "config", "device", "show", container_name],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        print(f"\nFull device config:\n{result2.stdout}")
+
+        # Check if files exist inside container
+        result3 = subprocess.run(
+            ["incus", "exec", container_name, "--", "ls", "-la", "/workspace/"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        print(f"\nFiles in container /workspace:\n{result3.stdout}")
+
+        if result.stderr:
+            print(f"Device list stderr: {result.stderr}")
+    except Exception as e:
+        print(f"Error checking devices: {e}")
+    print("=== END DEBUG ===\n")
 
     # === Phase 3: Poweroff to trigger ephemeral cleanup ===
 

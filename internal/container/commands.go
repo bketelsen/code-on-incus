@@ -185,12 +185,14 @@ func ContainerExec(containerName, command string, opts ContainerExecOptions) (st
 
 // LaunchContainer launches an ephemeral container
 func LaunchContainer(imageAlias, containerName string) error {
-	return IncusExec("launch", imageAlias, containerName, "--ephemeral")
+	args := []string{"launch", imageAlias, containerName, "--ephemeral"}
+	return IncusExec(args...)
 }
 
 // LaunchContainerPersistent launches a non-ephemeral container
 func LaunchContainerPersistent(imageAlias, containerName string) error {
-	return IncusExec("launch", imageAlias, containerName)
+	args := []string{"launch", imageAlias, containerName}
+	return IncusExec(args...)
 }
 
 // StopContainer stops a container
