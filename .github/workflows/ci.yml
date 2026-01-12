@@ -103,9 +103,14 @@ jobs:
           sudo iptables -I FORWARD -m comment --comment "managed by lxd network incusbr0" -j ACCEPT
 
           # Enable NAT for Incus bridge (critical for outbound connectivity)
-          BRIDGE_SUBNET=$(incus network get incusbr0 ipv4.address || echo "10.0.100.1/24")
-          echo "Bridge subnet: $BRIDGE_SUBNET"
-          sudo iptables -t nat -A POSTROUTING -s $BRIDGE_SUBNET ! -d $BRIDGE_SUBNET -j MASQUERADE -m comment --comment "managed by lxd network incusbr0"
+          # Get the actual bridge subnet from a running container's network
+          BRIDGE_IP=$(ip addr show incusbr0 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1)
+          echo "Bridge IP: $BRIDGE_IP"
+
+          # Add NAT rules for common Incus subnets
+          sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/8 -o $(ip route | grep default | awk '{print $5}') -j MASQUERADE
+          sudo iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -o $(ip route | grep default | awk '{print $5}') -j MASQUERADE
+          sudo iptables -t nat -A POSTROUTING -s 192.168.0.0/16 -o $(ip route | grep default | awk '{print $5}') -j MASQUERADE
 
           # Enable IP forwarding
           echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
