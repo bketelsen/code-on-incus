@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 0.3.0 (TBD)
+## 0.3.0 (2026-01-13)
 
 Add machine-readable output formats to enable programmatic integration with claude_yard Ruby project.
 
@@ -19,7 +19,7 @@ Add machine-readable output formats to enable programmatic integration with clau
 - [Enhancement] Normalize all "fake-claude" references to "dummy" throughout codebase (tests, docs, scripts)
 - [Enhancement] Remove FAQ.md - content no longer relevant after refactoring
 
-## 0.2.0 (2025-01-12)
+## 0.2.0 (2026-01-03)
 
 Major internal refactoring to make coi CLI-agnostic (zero breaking changes). Enables future support for tools beyond Claude Code (e.g., Aider, Cursor). Includes bug fixes for persistent containers, slot allocation, and CI improvements.
 
@@ -72,7 +72,7 @@ Major internal refactoring to make coi CLI-agnostic (zero breaking changes). Ena
 - [Change] Rename images from `claudeyard-*` to `coi-*` for consistency
 - [Change] **Session creation pattern** - Changed from `tmux new-session` (single command) to `tmux new-session -d` + `tmux attach` (two-step pattern) for better detach/reattach support
 
-## 0.1.0 (2025-01-08)
+## 0.1.0 (2025-12-11)
 
 Initial release of claude-on-incus (coi) - Run Claude Code in isolated Incus containers.
 
