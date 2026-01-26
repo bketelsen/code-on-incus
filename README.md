@@ -8,7 +8,7 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/mensfeld/code-on-incus)](https://golang.org/)
 [![Latest Release](https://img.shields.io/github/v/release/mensfeld/code-on-incus)](https://github.com/mensfeld/code-on-incus/releases)
 
-**Secure and Fast Container Runtime for AI Coding Tools on Linux**
+**Secure and Fast Container Runtime for AI Coding Tools on Linux and macOS**
 
 Run AI coding assistants (Claude Code, Aider, and more) in isolated, production-grade Incus containers with zero permission headaches, perfect file ownership, and true multi-session support.
 
