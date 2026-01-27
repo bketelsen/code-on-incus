@@ -229,13 +229,48 @@ func ContainerExec(containerName, command string, opts ContainerExecOptions) (st
 // LaunchContainer launches an ephemeral container
 func LaunchContainer(imageAlias, containerName string) error {
 	args := []string{"launch", imageAlias, containerName, "--ephemeral"}
-	return IncusExec(args...)
+	if err := IncusExec(args...); err != nil {
+		return err
+	}
+	return enableDockerSupport(containerName)
 }
 
 // LaunchContainerPersistent launches a non-ephemeral container
 func LaunchContainerPersistent(imageAlias, containerName string) error {
 	args := []string{"launch", imageAlias, containerName}
-	return IncusExec(args...)
+	if err := IncusExec(args...); err != nil {
+		return err
+	}
+	return enableDockerSupport(containerName)
+}
+
+// enableDockerSupport configures the container to support Docker/nested containers.
+//
+// This function sets three security flags required for Docker to work properly:
+// - security.nesting=true: Enables nested containerization
+// - security.syscalls.intercept.mknod=true: Safe device node creation
+// - security.syscalls.intercept.setxattr=true: Safe filesystem attribute handling
+//
+// Note: If an error occurs during configuration, the container may be left in a
+// partially configured state with some but not all flags set. Future troubleshooting
+// should verify all three flags are properly configured if Docker isn't working.
+func enableDockerSupport(containerName string) error {
+	// Enable container nesting for Docker support
+	if err := IncusExec("config", "set", containerName, "security.nesting=true"); err != nil {
+		return err
+	}
+
+	// Enable syscall interception for mknod (device node creation)
+	if err := IncusExec("config", "set", containerName, "security.syscalls.intercept.mknod=true"); err != nil {
+		return err
+	}
+
+	// Enable syscall interception for setxattr (filesystem attributes)
+	if err := IncusExec("config", "set", containerName, "security.syscalls.intercept.setxattr=true"); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // StopContainer stops a container
