@@ -34,10 +34,10 @@ type HealthCheck struct {
 
 // HealthResult represents the overall health check result
 type HealthResult struct {
-	Status    OverallStatus           `json:"status"`
-	Timestamp time.Time               `json:"timestamp"`
-	Checks    map[string]HealthCheck  `json:"checks"`
-	Summary   HealthSummary           `json:"summary"`
+	Status    OverallStatus          `json:"status"`
+	Timestamp time.Time              `json:"timestamp"`
+	Checks    map[string]HealthCheck `json:"checks"`
+	Summary   HealthSummary          `json:"summary"`
 }
 
 // HealthSummary provides a summary of health check results

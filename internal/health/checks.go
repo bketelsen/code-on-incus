@@ -388,7 +388,7 @@ func CheckCOIDirectory() HealthCheck {
 	return HealthCheck{
 		Name:    "coi_directory",
 		Status:  StatusOK,
-		Message: fmt.Sprintf("~/.coi (writable)"),
+		Message: "~/.coi (writable)",
 		Details: map[string]interface{}{
 			"path": coiDir,
 		},
