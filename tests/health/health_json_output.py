@@ -28,7 +28,9 @@ def test_health_json_output(coi_binary):
     )
 
     # Should succeed (exit 0 for healthy, 1 for degraded)
-    assert result.returncode in [0, 1], f"Health check failed with exit {result.returncode}. stderr: {result.stderr}"
+    assert result.returncode in [0, 1], (
+        f"Health check failed with exit {result.returncode}. stderr: {result.stderr}"
+    )
 
     # Parse JSON
     try:
@@ -43,7 +45,9 @@ def test_health_json_output(coi_binary):
     assert "summary" in data, "Should have 'summary' field"
 
     # Verify status is valid
-    assert data["status"] in ["healthy", "degraded", "unhealthy"], f"Invalid status: {data['status']}"
+    assert data["status"] in ["healthy", "degraded", "unhealthy"], (
+        f"Invalid status: {data['status']}"
+    )
 
     # Verify summary structure
     summary = data["summary"]

@@ -27,7 +27,9 @@ def test_health_verbose_output(coi_binary):
     )
 
     # Should succeed (exit 0 for healthy, 1 for degraded)
-    assert result.returncode in [0, 1], f"Health check failed with exit {result.returncode}. stderr: {result.stderr}"
+    assert result.returncode in [0, 1], (
+        f"Health check failed with exit {result.returncode}. stderr: {result.stderr}"
+    )
 
     output = result.stdout
 
@@ -38,4 +40,6 @@ def test_health_verbose_output(coi_binary):
     assert "DNS resolution" in output, "Verbose should check DNS resolution"
 
     # Verify passwordless sudo check appears
-    assert "Passwordless sudo" in output or "sudo" in output.lower(), "Verbose should check passwordless sudo"
+    assert "Passwordless sudo" in output or "sudo" in output.lower(), (
+        "Verbose should check passwordless sudo"
+    )

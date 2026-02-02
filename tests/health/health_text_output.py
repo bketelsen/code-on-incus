@@ -27,7 +27,9 @@ def test_health_text_output(coi_binary):
     )
 
     # Should succeed (exit 0 for healthy, 1 for degraded)
-    assert result.returncode in [0, 1], f"Health check failed with exit {result.returncode}. stderr: {result.stderr}"
+    assert result.returncode in [0, 1], (
+        f"Health check failed with exit {result.returncode}. stderr: {result.stderr}"
+    )
 
     output = result.stdout
 

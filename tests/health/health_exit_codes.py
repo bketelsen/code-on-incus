@@ -77,5 +77,7 @@ def test_health_summary_matches_checks(coi_binary):
     # Verify summary matches
     assert summary["total"] == total, f"Total mismatch: {summary['total']} != {total}"
     assert summary["passed"] == passed, f"Passed mismatch: {summary['passed']} != {passed}"
-    assert summary["warnings"] == warnings, f"Warnings mismatch: {summary['warnings']} != {warnings}"
+    assert summary["warnings"] == warnings, (
+        f"Warnings mismatch: {summary['warnings']} != {warnings}"
+    )
     assert summary["failed"] == failed, f"Failed mismatch: {summary['failed']} != {failed}"
