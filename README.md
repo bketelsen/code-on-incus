@@ -12,13 +12,33 @@
 
 Run AI coding assistants (Claude Code, Aider, and more) in isolated, production-grade Incus containers with zero permission headaches, perfect file ownership, and true multi-session support.
 
-**Limited Blast Radius:** Prepare your workspace upfront, let the AI agent run in isolation, validate the outcome. No SSH keys, no environment variables, no credentials exposed-only the AI vendor API key is needed. If compromised, damage is contained to your workspace. Network isolation helps prevent data exfiltration. Your host system stays protected.
+**Limited Blast Radius:** Prepare your workspace upfront, let the AI agent run in isolation, validate the outcome. No SSH keys, no environment variables, no credentials exposed. If compromised, damage is contained to your workspace. Network isolation helps prevent data exfiltration. Your host system stays protected.
 
 **Security First:** Unlike Docker or bare-metal execution, your environment variables, SSH keys, and Git credentials are **never** exposed to AI tools. Containers run in complete isolation with no access to your host credentials unless explicitly mounted.
 
 *Think Docker for AI coding tools, but with system containers that actually work like real machines.*
 
 ![Demo](misc/demo.gif)
+
+## Table of Contents
+
+- [Supported AI Coding Tools](#supported-ai-coding-tools)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Why Incus Instead of Docker or Docker Sandboxes?](#why-incus-instead-of-docker-or-docker-sandboxes)
+- [Installation](#installation)
+- [Running on macOS (Colima/Lima)](#running-on-macos-colimalima)
+- [Usage](#usage)
+- [Session Resume](#session-resume)
+- [Persistent Mode](#persistent-mode)
+- [Configuration](#configuration)
+- [Resource and Time Limits](#resource-and-time-limits)
+- [Container Lifecycle & Session Persistence](#container-lifecycle--session-persistence)
+- [Network Isolation](#network-isolation)
+- [Security Best Practices](#security-best-practices)
+- [System Health Check](#system-health-check)
+- [Troubleshooting](#troubleshooting)
+- [Frequently Asked Questions](#frequently-asked-questions)
 
 ## Supported AI Coding Tools
 
@@ -39,15 +59,16 @@ The tool abstraction layer makes it easy to add support for new AI coding assist
 - Session resume - Resume conversations with full history and credentials restored (workspace-scoped)
 - Persistent containers - Keep containers alive between sessions (installed tools preserved)
 - Workspace isolation - Each session mounts your project directory
-- **Slot isolation** - Each parallel slot has its own home directory (files don't leak between slots)
-- **Workspace files persist even in ephemeral mode** - Only the container is deleted, your work is always saved
-- **Container snapshots** - Create checkpoints, rollback changes, and branch experiments with full state preservation
+- Slot isolation - Each parallel slot has its own home directory (files don't leak between slots)
+- Workspace files persist even in ephemeral mode** - Only the container is deleted, your work is always saved
+- Container snapshots - Create checkpoints, rollback changes, and branch experiments with full state preservation
 
 **Security & Isolation**
 - Automatic UID mapping - No permission hell, files owned correctly
 - System containers - Full security isolation, better than Docker privileged mode
 - Project separation - Complete isolation between workspaces
-- **Credential protection** - No risk of SSH keys, `.env` files, or Git credentials being exposed to AI tools
+- Credential protection - No risk of SSH keys, `.env` files, or Git credentials being exposed to AI tools
+- Network isolation - Built-in firewalld limits block private network access and prevent data exfiltration (restricted/allowlist modes)
 
 **Safe Dangerous Operations**
 - AI coding tools often need broad filesystem access or bypass permission checks
@@ -695,9 +716,13 @@ persistent = true
 - Faster startup - Reuse existing container instead of rebuilding
 - Build artifacts preserved - No re-compiling on each session
 
+**Coding Machines Concept:**
+
+Think of persistent containers as dedicated coding machines owned by the AI agents. The agent can freely install software, configure tools, modify the environment—it's their machine. Your workspace is mounted into their machine, they do the work, and you get the results back. This autonomy lets agents work efficiently without repeatedly setting up their environment, while your host system stays protected.
+
 **What persists:**
 - **Ephemeral mode:** Workspace files + session data (container deleted)
-- **Persistent mode:** Workspace files + session data + container state + installed packages
+- **Persistent mode:** Workspace files + session data + container state + installed packages, system setup
 
 ## Configuration
 
@@ -1326,7 +1351,7 @@ Note: Windows support via WSL2 is experimental and not officially tested. Linux 
 
 What COI **doesn't** protect against:
 
-- ❌ **Prompt injection** - Malicious prompts can still trick the AI into generating harmful code
+- ❌ **Prompt injection** - Malicious prompts can still trick the AI into generating harmful code, but even if the AI goes rogue, damage is limited to your workspace by filesystem isolation and network controls
 - ❌ **API key leakage via AI** - If you give the AI your API key, it could be prompted to send it elsewhere
 - ❌ **Insecure code generation** - AI-generated code might have vulnerabilities (SQL injection, XSS, etc.)
 
@@ -1343,6 +1368,7 @@ What COI **doesn't** protect against:
 - Store it in your host `~/.claude/settings.json` or similar config
 - COI can mount this file read-only if you enable `mount_claude_config = true` in config
 - The AI tool uses the key to authenticate, but it's not available to arbitrary commands in the container
+- **Financial blast radius:** For subscription models (e.g., Claude Pro/Max), worst case is exhausting your daily quota. For pay-per-token models, set spending caps on your API key to limit potential abuse
 
 **If you're giving API keys to the AI for it to use** (e.g., AWS keys for the AI to deploy things):
 - **Don't do this unless you fully trust the project and AI's capabilities**
