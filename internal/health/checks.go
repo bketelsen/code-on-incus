@@ -1385,8 +1385,8 @@ func CheckOrphanedResources() HealthCheck {
 	message += " - run 'coi clean' to remove"
 
 	return HealthCheck{
-		Name:   "orphaned_resources",
-		Status: StatusWarning,
+		Name:    "orphaned_resources",
+		Status:  StatusWarning,
 		Message: message,
 		Details: map[string]interface{}{
 			"orphaned_veths":          orphanedVeths,
