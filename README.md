@@ -370,124 +370,14 @@ coi clean
 --storage PATH         # Mount persistent storage
 ```
 
-### Container Management
+### Advanced Usage
 
-```bash
-# List all containers and sessions
-coi list --all
+See the wiki for detailed documentation on advanced features:
 
-# Machine-readable JSON output (for programmatic use)
-coi list --format=json
-coi list --all --format=json
-
-# Output shows container mode:
-#   coi-abc12345-1 (ephemeral)   - will be deleted on exit
-#   coi-abc12345-2 (persistent)  - will be kept for reuse
-
-# Kill specific container (stop and delete)
-coi kill <container-name>
-
-# Kill multiple containers
-coi kill <container1> <container2>
-
-# Kill all containers (with confirmation)
-coi kill --all
-
-# Kill all without confirmation
-coi kill --all --force
-
-# Clean up stopped/orphaned containers
-coi clean
-coi clean --force  # Skip confirmation
-```
-
-### Advanced Container Operations
-
-Low-level container commands for advanced use cases:
-
-```bash
-# Launch a new container
-coi container launch coi my-container
-coi container launch coi my-container --ephemeral
-
-# Start/stop/delete containers
-coi container start my-container
-coi container stop my-container
-coi container stop my-container --force
-coi container delete my-container
-coi container delete my-container --force
-
-# Execute commands in containers
-coi container exec my-container -- ls -la /workspace
-coi container exec my-container --user 1000 --env FOO=bar --cwd /workspace -- npm test
-
-# Capture output in different formats
-coi container exec my-container --capture -- echo "hello"  # JSON output (default)
-coi container exec my-container --capture --format=raw -- pwd  # Raw stdout (for scripting)
-
-# Check container status
-coi container exists my-container
-coi container running my-container
-
-# Mount directories
-coi container mount my-container workspace /home/user/project /workspace --shift
-```
-
-### File Transfer
-
-Transfer files and directories between host and containers:
-
-```bash
-# Push files/directories into a container
-coi file push ./config.json my-container:/workspace/config.json
-coi file push -r ./src my-container:/workspace/src
-
-# Pull files/directories from a container
-coi file pull my-container:/workspace/build.log ./build.log
-coi file pull -r my-container:/root/.claude ./saved-sessions/session-123/
-```
-
-### Tmux Automation
-
-Interact with running AI coding sessions for automation workflows:
-
-```bash
-# List all active tmux sessions
-coi tmux list
-
-# Send commands/prompts to a running session
-coi tmux send coi-abc12345-1 "write a hello world script"
-coi tmux send coi-abc12345-1 "/exit"
-
-# Capture current output from a session
-coi tmux capture coi-abc12345-1
-```
-
-**Note:** Sessions use tmux internally, so standard tmux commands work after attaching with `coi attach`.
-
-### Image Management
-
-Advanced image operations:
-
-```bash
-# List images with filters
-coi image list                           # List COI images
-coi image list --all                     # List all local images
-coi image list --prefix claudeyard-      # Filter by prefix
-coi image list --format json             # JSON output
-
-# Publish containers as images
-coi image publish my-container my-custom-image --description "Custom build"
-
-# Delete images
-coi image delete my-custom-image
-
-# Check if image exists
-coi image exists coi
-
-# Clean up old image versions
-coi image cleanup claudeyard-node-42- --keep 3
-```
+- **[Container Operations](https://github.com/mensfeld/code-on-incus/wiki/Container-Operations)** - Container management and low-level operations
+- **[File Transfer](https://github.com/mensfeld/code-on-incus/wiki/File-Transfer)** - Push/pull files between host and containers
+- **[Tmux Automation](https://github.com/mensfeld/code-on-incus/wiki/Tmux-Automation)** - Automate AI sessions with tmux commands
+- **[Image Management](https://github.com/mensfeld/code-on-incus/wiki/Image-Management)** - Create and manage custom images
 
 ### Snapshot Management
 
