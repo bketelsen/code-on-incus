@@ -32,7 +32,7 @@ Run AI coding assistants (Claude Code, Aider, and more) in isolated, production-
 - [Persistent Mode](#persistent-mode)
 - [Configuration](#configuration)
 - [Container Lifecycle & Session Persistence](#container-lifecycle--session-persistence)
-- [System Health Check](#system-health-check)
+- [System Health Check](https://github.com/mensfeld/code-on-incus/wiki/System-Health-Check)
 - [Network Isolation](https://github.com/mensfeld/code-on-incus/wiki/Network-Isolation)
 - [Resource and Time Limits](https://github.com/mensfeld/code-on-incus/wiki/Resource-and-Time-Limits)
 - [Security Best Practices](https://github.com/mensfeld/code-on-incus/wiki/Security-Best-Practices)
@@ -802,73 +802,18 @@ alias gcs='git -c core.hooksPath=/dev/null commit --no-verify'
 
 ## System Health Check
 
-Use `coi health` to diagnose setup issues and verify your environment is correctly configured:
+See the [System Health Check guide](https://github.com/mensfeld/code-on-incus/wiki/System-Health-Check) for detailed information on diagnostics and what's checked.
 
+**Run diagnostics:**
 ```bash
-# Basic health check
-coi health
-
-# JSON output for scripting/automation
-coi health --format json
-
-# Verbose output with additional checks
-coi health --verbose
+coi health                    # Basic health check
+coi health --format json      # JSON output
+coi health --verbose          # Additional checks
 ```
 
-**Example output:**
-```
-Code on Incus Health Check
-==========================
+**What it checks:** System info, Incus setup, permissions, network configuration, storage, and running containers.
 
-SYSTEM:
-  [OK]   Operating system   Ubuntu 24.04.3 LTS (amd64)
-
-CRITICAL:
-  [OK]   Incus              Running (version 6.20)
-  [OK]   Permissions        User in incus-admin group
-  [OK]   Default image      coi (fingerprint: 1bf24b3a67...)
-  [OK]   Image age          2 days old
-
-NETWORKING:
-  [OK]   Network bridge     incusbr0 (10.128.178.1/24)
-  [OK]   IP forwarding      Enabled
-  [OK]   Firewalld          Running (restricted mode available)
-
-STORAGE:
-  [OK]   COI directory      ~/.coi (writable)
-  [OK]   Sessions dir       ~/.coi/sessions-claude (writable)
-  [OK]   Disk space         455.0 GB available
-
-CONFIGURATION:
-  [OK]   Config loaded      ~/.config/coi/config.toml
-  [OK]   Network mode       restricted
-  [OK]   Tool               claude
-
-STATUS:
-  [OK]   Containers         1 running
-  [OK]   Saved sessions     12 session(s)
-
-STATUS: HEALTHY
-All 16 checks passed
-```
-
-**Exit codes:**
-- `0` = healthy (all checks pass)
-- `1` = degraded (warnings but functional)
-- `2` = unhealthy (critical failures)
-
-**What's checked:**
-| Category | Checks |
-|----------|--------|
-| **System** | OS info, Colima/Lima detection |
-| **Critical** | Incus availability, group permissions, default image, image age |
-| **Networking** | Network bridge, IP forwarding, firewalld (mode-aware) |
-| **Storage** | COI directory, sessions directory, disk space (warns if <5GB) |
-| **Configuration** | Config files, network mode, tool |
-| **Status** | Running containers, saved sessions |
-| **Optional** | DNS resolution, passwordless sudo (with `--verbose`) |
-
-**Colima/Lima detection:** When running inside a Colima or Lima VM, the health check automatically detects this and shows `[colima]` in the OS info. If firewalld is not available, it provides Colima-specific guidance.
+**Exit codes:** 0 (healthy), 1 (degraded), 2 (unhealthy)
 
 ## Troubleshooting
 
