@@ -17,8 +17,7 @@ import time
 def get_container_ip(coi_binary, container_name):
     """Get container IP using coi container exec with --capture."""
     result = subprocess.run(
-        [coi_binary, "container", "exec", container_name, "--capture", "--",
-         "hostname", "-I"],
+        [coi_binary, "container", "exec", container_name, "--capture", "--", "hostname", "-I"],
         capture_output=True,
         text=True,
         timeout=30,
@@ -82,7 +81,7 @@ def cleanup_rules_for_ip(ip):
         if ip in rule:
             parts = rule.split()
             if len(parts) >= 4:
-                args = ["sudo", "-n", "firewall-cmd", "--direct", "--remove-rule"] + parts
+                args = ["sudo", "-n", "firewall-cmd", "--direct", "--remove-rule", *parts]
                 subprocess.run(args, capture_output=True, timeout=10, check=False)
 
 
@@ -121,8 +120,10 @@ def test_open_mode_firewall_cleanup(coi_binary, workspace_dir, cleanup_container
         [
             coi_binary,
             "shell",
-            "--workspace", workspace_dir,
-            "--network", "open",
+            "--workspace",
+            workspace_dir,
+            "--network",
+            "open",
             "--background",
             "--debug",
         ],
@@ -147,9 +148,6 @@ def test_open_mode_firewall_cleanup(coi_binary, workspace_dir, cleanup_container
 
     # Get container IP for verification
     container_ip = get_container_ip(coi_binary, container_name)
-
-    # Count rules after setup
-    rules_after_setup = len(get_firewall_rules())
 
     # Verify rules were created for open mode
     if container_ip:
@@ -180,7 +178,7 @@ def test_open_mode_firewall_cleanup(coi_binary, workspace_dir, cleanup_container
         if orphaned_rules > 0:
             # Clean up for test hygiene
             cleanup_rules_for_ip(container_ip)
-            assert False, (
+            pytest.fail(
                 f"Bug #1: Found {orphaned_rules} orphaned firewall rules for IP {container_ip} "
                 f"after cleanup. Open mode rules were not properly removed."
             )
@@ -211,16 +209,15 @@ def test_restricted_mode_firewall_cleanup(coi_binary, workspace_dir, cleanup_con
     if not firewalld_available():
         pytest.skip("firewalld not available")
 
-    # Count rules before
-    rules_before = len(get_firewall_rules())
-
     # Start shell with restricted network mode
     result = subprocess.run(
         [
             coi_binary,
             "shell",
-            "--workspace", workspace_dir,
-            "--network", "restricted",
+            "--workspace",
+            workspace_dir,
+            "--network",
+            "restricted",
             "--background",
             "--debug",
         ],
@@ -246,9 +243,6 @@ def test_restricted_mode_firewall_cleanup(coi_binary, workspace_dir, cleanup_con
     # Get container IP
     container_ip = get_container_ip(coi_binary, container_name)
 
-    # Count rules after setup - restricted mode creates multiple rules
-    rules_after_setup = len(get_firewall_rules())
-
     # Verify rules were created for restricted mode
     if container_ip:
         rules_for_container = count_rules_for_ip(container_ip)
@@ -272,7 +266,7 @@ def test_restricted_mode_firewall_cleanup(coi_binary, workspace_dir, cleanup_con
         orphaned_rules = count_rules_for_ip(container_ip)
         if orphaned_rules > 0:
             cleanup_rules_for_ip(container_ip)
-            assert False, (
+            pytest.fail(
                 f"Bug #2: Found {orphaned_rules} orphaned firewall rules for IP {container_ip}. "
                 f"This indicates cleanup happened after container deletion."
             )
@@ -307,8 +301,10 @@ def test_no_firewall_rule_accumulation(coi_binary, workspace_dir, cleanup_contai
             [
                 coi_binary,
                 "shell",
-                "--workspace", iter_workspace,
-                "--network", "open",
+                "--workspace",
+                iter_workspace,
+                "--network",
+                "open",
                 "--background",
             ],
             capture_output=True,
@@ -393,8 +389,10 @@ def test_kill_cleans_up_restricted_rules(coi_binary, workspace_dir, cleanup_cont
         [
             coi_binary,
             "shell",
-            "--workspace", workspace_dir,
-            "--network", "restricted",
+            "--workspace",
+            workspace_dir,
+            "--network",
+            "restricted",
             "--background",
             "--debug",
         ],
@@ -412,7 +410,7 @@ def test_kill_cleans_up_restricted_rules(coi_binary, workspace_dir, cleanup_cont
             container_name = line.split("Container name:")[-1].strip()
             break
 
-    assert container_name, f"Should find container name"
+    assert container_name, "Should find container name"
 
     # Wait for container
     time.sleep(5)
@@ -424,9 +422,7 @@ def test_kill_cleans_up_restricted_rules(coi_binary, workspace_dir, cleanup_cont
 
     # Verify rules exist
     rules_before_kill = count_rules_for_ip(container_ip)
-    assert rules_before_kill > 0, (
-        f"Restricted mode should have created rules for {container_ip}"
-    )
+    assert rules_before_kill > 0, f"Restricted mode should have created rules for {container_ip}"
 
     # Kill the running container - this should clean up firewall rules first
     subprocess.run(
@@ -445,7 +441,7 @@ def test_kill_cleans_up_restricted_rules(coi_binary, workspace_dir, cleanup_cont
     if rules_after_kill > 0:
         # Clean up for test hygiene
         cleanup_rules_for_ip(container_ip)
-        assert False, (
+        pytest.fail(
             f"Cleanup order bug: {rules_after_kill} rules still exist for {container_ip}. "
             f"This indicates firewall cleanup failed."
         )
