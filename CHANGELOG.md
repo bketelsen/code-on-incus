@@ -4,6 +4,7 @@
 
 ### Documentation
 
+- [Documentation] **Image management operations** - Added inline examples to README for existing `coi image` commands (list, publish, exists, delete, cleanup). These commands have been available since early releases for creating and managing custom container images, with 20 integration tests and complete wiki documentation. Quick reference examples now included in README for common operations like publishing containers as images, checking image existence, and cleaning up old image versions. See [Image Management wiki page](https://github.com/mensfeld/code-on-incus/wiki/Image-Management) for detailed usage examples and workflows.
 - [Documentation] **File transfer operations** - Documented existing `coi file push` and `coi file pull` commands in README. These commands have been available since early releases for transferring files and directories between host and containers, supporting recursive operations with the `-r` flag. Includes 16 integration tests covering various scenarios. See [File Transfer wiki page](https://github.com/mensfeld/code-on-incus/wiki/File-Transfer) for detailed usage examples.
 
 ### Bug Fixes

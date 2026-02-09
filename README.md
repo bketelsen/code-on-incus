@@ -368,6 +368,15 @@ coi file push ./config.json mycontainer:/workspace/config.json
 coi file push -r ./src mycontainer:/workspace/src
 coi file pull mycontainer:/workspace/output.log ./output.log
 coi file pull -r mycontainer:/root/.claude ./backup/
+
+# Manage custom images
+coi image list                                   # List COI images
+coi image list --all                             # List all local images
+coi image list --prefix myproject- --format=json # Filter and output as JSON
+coi image publish mycontainer my-custom-image    # Publish container as image
+coi image exists my-custom-image                 # Check if image exists
+coi image delete my-old-image                    # Delete image
+coi image cleanup myproject- --keep 3            # Keep only 3 most recent versions
 ```
 
 ### Global Flags
