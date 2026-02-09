@@ -31,8 +31,8 @@ Run AI coding assistants (Claude Code, Aider, and more) in isolated, production-
 - [Session Resume](#session-resume)
 - [Persistent Mode](#persistent-mode)
 - [Configuration](#configuration)
-- [Container Lifecycle & Session Persistence](#container-lifecycle--session-persistence)
 - [System Health Check](https://github.com/mensfeld/code-on-incus/wiki/System-Health-Check)
+- [Container Lifecycle & Session Persistence](https://github.com/mensfeld/code-on-incus/wiki/Container-Lifecycle-and-Sessions)
 - [Network Isolation](https://github.com/mensfeld/code-on-incus/wiki/Network-Isolation)
 - [Resource and Time Limits](https://github.com/mensfeld/code-on-incus/wiki/Resource-and-Time-Limits)
 - [Security Best Practices](https://github.com/mensfeld/code-on-incus/wiki/Security-Best-Practices)
@@ -662,103 +662,22 @@ coi shell --limit-cpu="2" --limit-memory="2GiB" --limit-duration="2h"
 
 ## Container Lifecycle & Session Persistence
 
-Understanding how containers and sessions work in `coi`:
+See the [Container Lifecycle and Sessions guide](https://github.com/mensfeld/code-on-incus/wiki/Container-Lifecycle-and-Sessions) for detailed explanation of how containers and sessions work.
 
-### How It Works Internally
+**Key concepts:**
+- **Workspace files**: Always saved (regardless of mode)
+- **Session data**: Always saved to `~/.coi/sessions-<tool>/`
+- **Ephemeral mode** (default): Container deleted after exit, session preserved
+- **Persistent mode** (`--persistent`): Container kept with all installed packages
+- **Resume** (`--resume`): Restore AI conversation in fresh/existing container
 
-1. **Containers are always launched as non-ephemeral** (persistent in Incus terms)
-   - This allows saving session data even if the container is stopped from within (e.g., `sudo shutdown 0`)
-   - Session data can be pulled from stopped containers, but not from deleted ones
-
-2. **Inside the container**: `tmux` → `bash` → `<ai-tool>`
-   - When the AI tool exits, you're dropped to bash
-   - From bash you can: type `exit`, press `Ctrl+b d` to detach, or run `sudo shutdown 0`
-
-3. **On cleanup** (when you exit/detach):
-   - Session data (tool config directory) is **always** saved to `~/.coi/sessions-<tool>/`
-   - If `--persistent` was NOT set: container is deleted after saving
-   - If `--persistent` was set: container is kept for reuse
-
-### What Gets Preserved
-
-| Mode | Workspace Files | AI Tool Session | Container State |
-|------|----------------|-----------------|-----------------|
-| **Default (ephemeral)** | Always saved | Always saved | Deleted |
-| **`--persistent`** | Always saved | Always saved | Kept |
-
-### Session vs Container Persistence
-
-- **`--resume`**: Restores the **AI tool conversation** in a fresh container
-  - Use when you want to continue a conversation but don't need installed packages
-  - Container is recreated, only tool session data is restored
-  - **Workspace-scoped**: Only finds sessions from the current workspace directory (security feature)
-
-- **`--persistent`**: Keeps the **entire container** with all modifications
-  - Use when you've installed tools, built artifacts, or modified the environment
-  - `coi attach` reconnects to the same container with everything intact
-
-### Stopping Containers
-
-From **inside** the container:
-- `exit` in bash → exits bash but keeps container running (use for temporary shell exit)
-- `Ctrl+b d` → detaches from tmux, container stays running
-- `sudo shutdown 0` or `sudo poweroff` → stops container, session is saved, then container is deleted (or kept if `--persistent`)
-
-From **outside** (host):
-- `coi shutdown <name>` → graceful stop with session save, then delete (60s timeout by default)
-- `coi shutdown --timeout=30 <name>` → graceful stop with 30s timeout
-- `coi shutdown --all` → graceful stop all containers (with confirmation)
-- `coi shutdown --all --force` → graceful stop all without confirmation
-- `coi kill <name>` → force stop and delete immediately
-- `coi kill --all` → force stop and delete all containers (with confirmation)
-- `coi kill --all --force` → force stop all without confirmation
-
-### Example Workflows
-
-**Quick task (default mode):**
+**Quick reference:**
 ```bash
-coi shell                    # Start session with default AI tool
-# ... work with AI assistant ...
-sudo poweroff                # Shutdown container → session saved, container deleted
-coi shell --resume           # Continue conversation in fresh container
-```
-
-**Note:** `exit` in bash keeps the container running - use `sudo poweroff` or `sudo shutdown 0` to properly end the session. Both require sudo but no password.
-
-**Long-running project (`--persistent`):**
-```bash
-coi shell --persistent       # Start persistent session
-# ... install tools, build things ...
-# Press Ctrl+b d to detach
-coi attach                   # Reconnect to same container with all tools
-sudo poweroff                # When done, shutdown and save
-coi shell --persistent --resume  # Resume with all installed tools intact
-```
-
-**Parallel sessions (multi-slot):**
-```bash
-# Terminal 1: Start first session (auto-allocates slot 1)
-coi shell
-# ... working on feature A ...
-# Press Ctrl+b d to detach (container stays running)
-
-# Terminal 2: Start second session (auto-allocates slot 2)
-coi shell
-# ... working on feature B in parallel ...
-
-# Both sessions share the same workspace but have isolated:
-# - Home directories (~/slot1_file won't appear in slot 2)
-# - Installed packages
-# - Running processes
-# - AI tool conversation history
-
-# List both running sessions
-coi list
-#   coi-abc12345-1 (ephemeral)
-#   coi-abc12345-2 (ephemeral)
-
-# When done, shutdown all sessions
-coi shutdown --all
+coi shell --persistent        # Keep container between sessions
+coi shell --resume            # Resume previous conversation
+coi attach                    # Reconnect to running container
+sudo poweroff                 # Properly stop container (inside)
+coi shutdown <name>           # Graceful stop (outside)
 ```
 
 ## Network Isolation
