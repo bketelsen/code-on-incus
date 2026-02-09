@@ -32,8 +32,8 @@ Run AI coding assistants (Claude Code, Aider, and more) in isolated, production-
 - [Persistent Mode](#persistent-mode)
 - [Configuration](#configuration)
 - [Container Lifecycle & Session Persistence](#container-lifecycle--session-persistence)
-- [Network Isolation](#network-isolation)
 - [System Health Check](#system-health-check)
+- [Network Isolation](https://github.com/mensfeld/code-on-incus/wiki/Network-Isolation)
 - [Resource and Time Limits](https://github.com/mensfeld/code-on-incus/wiki/Resource-and-Time-Limits)
 - [Security Best Practices](https://github.com/mensfeld/code-on-incus/wiki/Security-Best-Practices)
 - [Troubleshooting](https://github.com/mensfeld/code-on-incus/wiki/Troubleshooting)
@@ -763,152 +763,27 @@ coi shutdown --all
 
 ## Network Isolation
 
-COI provides network isolation to protect your host and private networks from container access.
+See the [Network Isolation guide](https://github.com/mensfeld/code-on-incus/wiki/Network-Isolation) for complete documentation on network security and firewalld setup.
 
-**Requirements:** Network isolation (restricted/allowlist modes) requires **firewalld** to be installed and running. COI uses firewalld direct rules to filter container traffic in the FORWARD chain. If firewalld is not available, you'll need to use `--network=open` or install and configure firewalld. See [Firewalld Setup](#firewalld-setup) below for instructions.
+**Network modes:**
+- **Restricted (default)** - Blocks private networks, allows internet
+- **Allowlist** - Only specific domains/IPs allowed
+- **Open** - No restrictions (trusted projects only)
 
-### Network Modes
-
-**Restricted mode (default)** - Blocks local networks, allows internet:
+**Quick examples:**
 ```bash
-coi shell  # Default behavior
-```
-- Blocks: RFC1918 private networks (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
-- Blocks: Cloud metadata endpoints (169.254.0.0/16)
-- Allows: All public internet (npm, pypi, GitHub, APIs, etc.)
-
-**Allowlist mode** - Only specific domains allowed:
-```bash
-coi shell --network=allowlist
-```
-- Requires configuration with `allowed_domains` list
-- DNS resolution with automatic IP refresh every 30 minutes
-- Always blocks RFC1918 private networks
-- IP caching for DNS failure resilience
-
-**Open mode** - No restrictions (trusted projects only):
-```bash
-coi shell --network=open
+coi shell                      # Restricted mode (default)
+coi shell --network=allowlist  # Allowlist mode
+coi shell --network=open       # Open mode
 ```
 
-### Configuration
-
-```toml
-# ~/.config/coi/config.toml
-[network]
-mode = "restricted"  # restricted | open | allowlist
-
-# Allowlist mode configuration
-# Supports both domain names and raw IPv4 addresses
-allowed_domains = [
-    "8.8.8.8",             # Google DNS (REQUIRED for DNS resolution)
-    "1.1.1.1",             # Cloudflare DNS (REQUIRED for DNS resolution)
-    "registry.npmjs.org",  # npm package registry
-    "api.anthropic.com",   # Claude API
-    "platform.claude.com", # Claude Platform
-]
-refresh_interval_minutes = 30  # IP refresh interval (0 to disable)
-```
-
-**Important for allowlist mode:**
-- **Gateway IP is auto-detected** - COI automatically detects and allows your network gateway IP. You don't need to add it manually. Containers must reach their gateway to route traffic.
-- **Public DNS servers required** - `8.8.8.8` and `1.1.1.1` must be in the allowlist for DNS resolution to work.
-- **Firewall rule ordering** - COI adds ALLOW rules first (for gateway, allowed domains/IPs), then REJECT rules (for RFC1918 ranges), then a default REJECT rule for allowlist mode.
-- Supports both domain names (`github.com`) and raw IPv4 addresses (`8.8.8.8`)
-- Subdomains must be listed explicitly (`github.com` ≠ `api.github.com`)
-- Domains behind CDNs may have many IPs that change frequently
-- DNS failures use cached IPs from previous successful resolution
-
-### Host Access to Container Services
-
-**Accessing services from the host** (e.g., Puma web server, HTTP servers):
-
-By default, COI allows the **host machine** to access services running in containers. This works by adding an allow rule for the gateway IP (which represents the host) **before** the RFC1918 block rules. Since firewalld evaluates rules by priority, the gateway IP is allowed while other private IPs are still blocked.
-
-For example, if a web server runs on port 3000 in the container:
+**Accessing container services from host:**
 ```bash
-# Inside container: Puma/Rails server listening on 0.0.0.0:3000
-# From host: Access via container IP
+coi list  # Get container IP
 curl http://<container-ip>:3000
 ```
 
-**Allowing access from entire local network:**
-
-For development environments where you want machines on your local network to access container services (e.g., accessing containers via tmux from multiple machines), add this to your config:
-
-```toml
-[network]
-allow_local_network_access = true  # Allow all RFC1918, not just gateway
-```
-
-**⚠️ Security Note:** When `allow_local_network_access = true`, ALL RFC1918 private network traffic is allowed (no RFC1918 blocking). Use this only in trusted development environments where you need cross-machine access.
-
-**Default behavior:** Only the host (gateway IP) can access container services. Other machines on your local network cannot, even if they're on the same subnet.
-
-**Note:** Firewalld rules filter traffic at the FORWARD chain level. All traffic from the container to the gateway IP is permitted to allow host-to-container communication.
-
-### Accessing Container Services from Host
-
-With standard bridge networking, containers are directly accessible from your host. If you run a web server, database, or API inside the container, you can access it from your host browser or tools using the container's IP address.
-
-```bash
-# Find container IP
-coi list  # Shows IPv4 for running containers
-
-# Access service from host
-curl http://<container-ip>:3000
-```
-
-**Troubleshooting:**
-If you see "Connection refused" when trying to access container services:
-1. Verify container service is listening: `coi container exec <name> -- netstat -tlnp`
-2. Check container IP: `coi list` (shows IPv4 for running containers)
-3. Ensure firewall allows traffic to the bridge network
-
-### Firewalld Setup
-
-Network isolation (restricted/allowlist modes) requires firewalld. If you see the error "firewalld is not available", you have two options:
-
-**Option 1: Use open network mode (quick fix)**
-```bash
-coi shell --network=open
-```
-This disables egress filtering but allows you to work immediately.
-
-**Option 2: Install and configure firewalld (recommended)**
-
-Firewalld provides the FORWARD chain filtering needed for network isolation. Follow these steps:
-
-```bash
-# 1. Install firewalld (Ubuntu/Debian)
-sudo apt install firewalld
-
-# 2. Enable and start firewalld
-sudo systemctl enable --now firewalld
-
-# 3. Enable masquerading for container NAT
-sudo firewall-cmd --permanent --add-masquerade
-sudo firewall-cmd --reload
-
-# 4. Verify firewalld is running
-sudo firewall-cmd --state
-
-# 5. Allow COI to manage firewall rules (passwordless sudo)
-echo "$USER ALL=(ALL) NOPASSWD: /usr/bin/firewall-cmd" | sudo tee /etc/sudoers.d/coi-firewalld
-sudo chmod 440 /etc/sudoers.d/coi-firewalld
-```
-
-**Key Points:**
-- Firewalld must be running for network isolation to work
-- COI adds direct rules to the FORWARD chain to filter container traffic
-- Rules are scoped by container IP address for precise filtering
-- Rules are removed when containers are stopped/deleted
-
-**How it works:**
-- COI gets the container's IP address from Incus
-- Firewalld direct rules are added with priorities (lower = evaluated first)
-- Restricted mode: Allow gateway, block RFC1918, allow all else
-- Allowlist mode: Allow gateway, allow specific IPs, block RFC1918, block all else
+**Note:** Network isolation requires firewalld. Use `--network=open` or see the guide for firewalld setup instructions.
 
 ## Security Best Practices
 
