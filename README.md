@@ -589,16 +589,32 @@ curl http://<container-ip>:3000
 
 See the [Security Best Practices guide](https://github.com/mensfeld/code-on-incus/wiki/Security-Best-Practices) for detailed security recommendations.
 
-**Key practice - Disable git hooks when committing AI-generated code:**
+**Automatic Git Hooks Protection (Default):**
+
+COI automatically mounts `.git/hooks` as read-only to prevent containers from modifying git hooks that execute on your host:
+
 ```bash
-# Commit with hooks disabled
+coi shell                      # .git/hooks mounted read-only (default)
+coi shell --writable-git-hooks # Opt-out if AI needs to manage hooks
+```
+
+**Why this matters:** Git hooks (pre-commit, post-commit, etc.) execute automatically during git operations. If a container could modify these hooks, malicious code could be injected that runs on your host when you later commit. COI blocks this attack vector by default.
+
+**Disable via config:**
+```toml
+# ~/.config/coi/config.toml
+[git]
+protect_hooks = false
+```
+
+**Additional protection - Disable git hooks when committing AI-generated code:**
+```bash
+# Commit with hooks disabled (extra safety layer)
 git -c core.hooksPath=/dev/null commit --no-verify -m "your message"
 
 # Or create an alias
 alias gcs='git -c core.hooksPath=/dev/null commit --no-verify'
 ```
-
-**Why:** Containers can write to `.git/` in your workspace. This prevents potentially modified hooks from executing when you commit from your host.
 
 ## System Health Check
 
