@@ -80,7 +80,7 @@ func (m *Manager) Start() error {
 }
 
 // MountDisk adds a disk device to the container
-func (m *Manager) MountDisk(name, source, path string, shift bool) error {
+func (m *Manager) MountDisk(name, source, path string, shift, readonly bool) error {
 	args := []string{
 		"config", "device", "add", m.ContainerName, name, "disk",
 		fmt.Sprintf("source=%s", source),
@@ -88,6 +88,9 @@ func (m *Manager) MountDisk(name, source, path string, shift bool) error {
 	}
 	if shift {
 		args = append(args, "shift=true")
+	}
+	if readonly {
+		args = append(args, "readonly=true")
 	}
 
 	return IncusExec(args...)

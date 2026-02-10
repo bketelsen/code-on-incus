@@ -194,6 +194,68 @@ func TestGetConfigPaths(t *testing.T) {
 	}
 }
 
+func TestGitConfigDefaults(t *testing.T) {
+	cfg := GetDefaultConfig()
+
+	// Default should be to protect hooks
+	if !cfg.Git.ProtectHooks {
+		t.Error("Expected default Git.ProtectHooks to be true")
+	}
+}
+
+func TestGitConfigMerge(t *testing.T) {
+	tests := []struct {
+		name           string
+		baseProtect    bool
+		otherProtect   bool
+		expectedResult bool
+	}{
+		{
+			name:           "true merged with true",
+			baseProtect:    true,
+			otherProtect:   true,
+			expectedResult: true,
+		},
+		{
+			name:           "true merged with false",
+			baseProtect:    true,
+			otherProtect:   false,
+			expectedResult: false,
+		},
+		{
+			name:           "false merged with true",
+			baseProtect:    false,
+			otherProtect:   true,
+			expectedResult: true,
+		},
+		{
+			name:           "false merged with false",
+			baseProtect:    false,
+			otherProtect:   false,
+			expectedResult: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			base := GetDefaultConfig()
+			base.Git.ProtectHooks = tt.baseProtect
+
+			other := &Config{
+				Git: GitConfig{
+					ProtectHooks: tt.otherProtect,
+				},
+			}
+
+			base.Merge(other)
+
+			if base.Git.ProtectHooks != tt.expectedResult {
+				t.Errorf("Expected Git.ProtectHooks to be %v, got %v", tt.expectedResult, base.Git.ProtectHooks)
+			}
+		})
+	}
+}
+
 func TestToolConfigDefaults(t *testing.T) {
 	cfg := GetDefaultConfig()
 

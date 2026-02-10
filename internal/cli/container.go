@@ -321,9 +321,10 @@ Example:
 		path := args[3]
 
 		shift, _ := cmd.Flags().GetBool("shift")
+		readonly, _ := cmd.Flags().GetBool("readonly")
 
 		mgr := container.NewManager(name)
-		if err := mgr.MountDisk(deviceName, source, path, shift); err != nil {
+		if err := mgr.MountDisk(deviceName, source, path, shift, readonly); err != nil {
 			return exitError(1, fmt.Sprintf("failed to mount disk: %v", err))
 		}
 
@@ -405,6 +406,7 @@ func init() {
 
 	// Add flags to mount command
 	containerMountCmd.Flags().Bool("shift", true, "Enable UID/GID shifting")
+	containerMountCmd.Flags().Bool("readonly", false, "Mount as read-only")
 
 	// Add flags to list command
 	containerListCmd.Flags().String("format", "text", "Output format: text or json")

@@ -23,6 +23,9 @@ var (
 	mountPairs      []string // --mount flag for custom mounts
 	networkMode     string
 
+	// Git security flag
+	writableGitHooks bool
+
 	// Limit flags
 	limitCPU           string
 	limitCPUAllowance  string
@@ -110,6 +113,8 @@ func init() {
 	rootCmd.PersistentFlags().StringSliceVarP(&envVars, "env", "e", []string{}, "Environment variables (KEY=VALUE)")
 	rootCmd.PersistentFlags().StringArrayVar(&mountPairs, "mount", []string{}, "Mount directory (HOST:CONTAINER, repeatable)")
 	rootCmd.PersistentFlags().StringVar(&networkMode, "network", "", "Network mode: restricted (default), open")
+	rootCmd.PersistentFlags().BoolVar(&writableGitHooks, "writable-git-hooks", false,
+		"Allow container to write to .git/hooks (disables security protection)")
 
 	// Resource limit flags
 	rootCmd.PersistentFlags().StringVar(&limitCPU, "limit-cpu", "", "CPU count limit (e.g., '2', '0-3', '0,1,3')")

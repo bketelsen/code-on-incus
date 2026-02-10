@@ -14,7 +14,13 @@ type Config struct {
 	Tool     ToolConfig               `toml:"tool"`
 	Mounts   MountsConfig             `toml:"mounts"`
 	Limits   LimitsConfig             `toml:"limits"`
+	Git      GitConfig                `toml:"git"`
 	Profiles map[string]ProfileConfig `toml:"profiles"`
+}
+
+// GitConfig contains git-related security settings
+type GitConfig struct {
+	ProtectHooks bool `toml:"protect_hooks"` // Mount .git/hooks read-only (default: true)
 }
 
 // DefaultsConfig contains default settings
@@ -184,6 +190,9 @@ func GetDefaultConfig() *Config {
 		Mounts: MountsConfig{
 			Default: []MountEntry{},
 		},
+		Git: GitConfig{
+			ProtectHooks: true,
+		},
 		Limits: LimitsConfig{
 			CPU: CPULimits{
 				Count:     "",
@@ -339,6 +348,10 @@ func (c *Config) Merge(other *Config) {
 
 	// Merge limits
 	mergeLimits(&c.Limits, &other.Limits)
+
+	// Merge git settings
+	// For booleans, we take the other value (TOML parsing sets unspecified to false)
+	c.Git.ProtectHooks = other.Git.ProtectHooks
 
 	// Merge profiles
 	for name, profile := range other.Profiles {

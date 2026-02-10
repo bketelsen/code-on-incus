@@ -177,7 +177,7 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	useShift := !cfg.Incus.DisableShift
 	if !wasRestarted {
 		fmt.Fprintf(os.Stderr, "Mounting workspace %s...\n", absWorkspace)
-		if err := mgr.MountDisk("workspace", absWorkspace, "/workspace", useShift); err != nil {
+		if err := mgr.MountDisk("workspace", absWorkspace, "/workspace", useShift, false); err != nil {
 			return fmt.Errorf("failed to mount workspace: %w", err)
 		}
 
@@ -202,7 +202,7 @@ func runCommand(cmd *cobra.Command, args []string) error {
 
 				fmt.Fprintf(os.Stderr, "Adding mount: %s -> %s\n", mount.HostPath, mount.ContainerPath)
 
-				if err := mgr.MountDisk(mount.DeviceName, mount.HostPath, mount.ContainerPath, useShift); err != nil {
+				if err := mgr.MountDisk(mount.DeviceName, mount.HostPath, mount.ContainerPath, useShift, false); err != nil {
 					return fmt.Errorf("failed to add mount '%s': %w", mount.DeviceName, err)
 				}
 			}

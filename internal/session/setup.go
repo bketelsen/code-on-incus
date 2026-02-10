@@ -72,7 +72,7 @@ func setupMounts(mgr *container.Manager, mountConfig *MountConfig, useShift bool
 		logger(fmt.Sprintf("Adding mount: %s -> %s", mount.HostPath, mount.ContainerPath))
 
 		// Apply shift setting (all mounts use same shift for now)
-		if err := mgr.MountDisk(mount.DeviceName, mount.HostPath, mount.ContainerPath, useShift); err != nil {
+		if err := mgr.MountDisk(mount.DeviceName, mount.HostPath, mount.ContainerPath, useShift, false); err != nil {
 			return fmt.Errorf("failed to add mount '%s': %w", mount.DeviceName, err)
 		}
 	}
@@ -82,20 +82,21 @@ func setupMounts(mgr *container.Manager, mountConfig *MountConfig, useShift bool
 
 // SetupOptions contains options for setting up a session
 type SetupOptions struct {
-	WorkspacePath string
-	Image         string
-	Persistent    bool // Keep container between sessions (don't delete on cleanup)
-	ResumeFromID  string
-	Slot          int
-	MountConfig   *MountConfig // Multi-mount support
-	SessionsDir   string       // e.g., ~/.coi/sessions-claude
-	CLIConfigPath string       // e.g., ~/.claude (host CLI config to copy credentials from)
-	Tool          tool.Tool    // AI coding tool being used
-	NetworkConfig *config.NetworkConfig
-	DisableShift  bool                 // Disable UID shifting (for Colima/Lima environments)
-	LimitsConfig  *config.LimitsConfig // Resource and time limits
-	IncusProject  string               // Incus project name
-	Logger        func(string)
+	WorkspacePath   string
+	Image           string
+	Persistent      bool // Keep container between sessions (don't delete on cleanup)
+	ResumeFromID    string
+	Slot            int
+	MountConfig     *MountConfig // Multi-mount support
+	SessionsDir     string       // e.g., ~/.coi/sessions-claude
+	CLIConfigPath   string       // e.g., ~/.claude (host CLI config to copy credentials from)
+	Tool            tool.Tool    // AI coding tool being used
+	NetworkConfig   *config.NetworkConfig
+	DisableShift    bool                 // Disable UID shifting (for Colima/Lima environments)
+	LimitsConfig    *config.LimitsConfig // Resource and time limits
+	IncusProject    string               // Incus project name
+	ProtectGitHooks bool                 // Mount .git/hooks read-only (default: true)
+	Logger          func(string)
 }
 
 // SetupResult contains the result of setup
@@ -282,13 +283,28 @@ func Setup(opts SetupOptions) (*SetupResult, error) {
 
 		// Add disk devices BEFORE starting container
 		opts.Logger(fmt.Sprintf("Adding workspace mount: %s", opts.WorkspacePath))
-		if err := result.Manager.MountDisk("workspace", opts.WorkspacePath, "/workspace", useShift); err != nil {
+		if err := result.Manager.MountDisk("workspace", opts.WorkspacePath, "/workspace", useShift, false); err != nil {
 			return nil, fmt.Errorf("failed to add workspace device: %w", err)
 		}
 
 		// Mount all configured directories
 		if err := setupMounts(result.Manager, opts.MountConfig, useShift, opts.Logger); err != nil {
 			return nil, err
+		}
+
+		// Protect git hooks by mounting read-only (security feature)
+		// This must be added after the workspace mount for the overlay to work
+		if opts.ProtectGitHooks {
+			if err := SetupGitHooksMount(result.Manager, opts.WorkspacePath, useShift); err != nil {
+				opts.Logger(fmt.Sprintf("Warning: Failed to protect git hooks: %v", err))
+				// Non-fatal: continue even if hooks protection fails
+			} else {
+				// Only log if .git exists
+				gitDir := filepath.Join(opts.WorkspacePath, ".git")
+				if _, err := os.Stat(gitDir); err == nil {
+					opts.Logger("Protected .git/hooks (mounted read-only)")
+				}
+			}
 		}
 
 		// Apply resource limits before starting (if configured)
