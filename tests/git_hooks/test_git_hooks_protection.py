@@ -4,9 +4,7 @@ This feature mounts .git/hooks as read-only by default to protect against
 malicious code injection that could execute on the host during git operations.
 """
 
-import os
 import subprocess
-import tempfile
 from pathlib import Path
 
 
