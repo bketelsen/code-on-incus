@@ -82,21 +82,21 @@ func setupMounts(mgr *container.Manager, mountConfig *MountConfig, useShift bool
 
 // SetupOptions contains options for setting up a session
 type SetupOptions struct {
-	WorkspacePath   string
-	Image           string
-	Persistent      bool // Keep container between sessions (don't delete on cleanup)
-	ResumeFromID    string
-	Slot            int
-	MountConfig     *MountConfig // Multi-mount support
-	SessionsDir     string       // e.g., ~/.coi/sessions-claude
-	CLIConfigPath   string       // e.g., ~/.claude (host CLI config to copy credentials from)
-	Tool            tool.Tool    // AI coding tool being used
-	NetworkConfig   *config.NetworkConfig
-	DisableShift    bool                 // Disable UID shifting (for Colima/Lima environments)
-	LimitsConfig    *config.LimitsConfig // Resource and time limits
-	IncusProject    string               // Incus project name
-	ProtectGitHooks bool                 // Mount .git/hooks read-only (default: true)
-	Logger          func(string)
+	WorkspacePath  string
+	Image          string
+	Persistent     bool // Keep container between sessions (don't delete on cleanup)
+	ResumeFromID   string
+	Slot           int
+	MountConfig    *MountConfig // Multi-mount support
+	SessionsDir    string       // e.g., ~/.coi/sessions-claude
+	CLIConfigPath  string       // e.g., ~/.claude (host CLI config to copy credentials from)
+	Tool           tool.Tool    // AI coding tool being used
+	NetworkConfig  *config.NetworkConfig
+	DisableShift   bool                 // Disable UID shifting (for Colima/Lima environments)
+	LimitsConfig   *config.LimitsConfig // Resource and time limits
+	IncusProject   string               // Incus project name
+	ProtectedPaths []string             // Paths to mount read-only for security (e.g., .git/hooks, .vscode)
+	Logger         func(string)
 }
 
 // SetupResult contains the result of setup
@@ -292,17 +292,17 @@ func Setup(opts SetupOptions) (*SetupResult, error) {
 			return nil, err
 		}
 
-		// Protect git hooks by mounting read-only (security feature)
+		// Protect security-sensitive paths by mounting read-only (security feature)
 		// This must be added after the workspace mount for the overlay to work
-		if opts.ProtectGitHooks {
-			if err := SetupGitHooksMount(result.Manager, opts.WorkspacePath, useShift); err != nil {
-				opts.Logger(fmt.Sprintf("Warning: Failed to protect git hooks: %v", err))
-				// Non-fatal: continue even if hooks protection fails
+		if len(opts.ProtectedPaths) > 0 {
+			if err := SetupSecurityMounts(result.Manager, opts.WorkspacePath, opts.ProtectedPaths, useShift); err != nil {
+				opts.Logger(fmt.Sprintf("Warning: Failed to setup security mounts: %v", err))
+				// Non-fatal: continue even if protection fails
 			} else {
-				// Only log if .git exists
-				gitDir := filepath.Join(opts.WorkspacePath, ".git")
-				if _, err := os.Stat(gitDir); err == nil {
-					opts.Logger("Protected .git/hooks (mounted read-only)")
+				// Log which paths were actually protected
+				protectedPaths := GetProtectedPathsForLogging(opts.WorkspacePath, opts.ProtectedPaths)
+				if len(protectedPaths) > 0 {
+					opts.Logger(fmt.Sprintf("Protected paths (mounted read-only): %s", strings.Join(protectedPaths, ", ")))
 				}
 			}
 		}

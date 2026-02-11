@@ -15,12 +15,47 @@ type Config struct {
 	Mounts   MountsConfig             `toml:"mounts"`
 	Limits   LimitsConfig             `toml:"limits"`
 	Git      GitConfig                `toml:"git"`
+	Security SecurityConfig           `toml:"security"`
 	Profiles map[string]ProfileConfig `toml:"profiles"`
 }
 
 // GitConfig contains git-related security settings
 type GitConfig struct {
 	WritableHooks *bool `toml:"writable_hooks"` // Allow container to write to .git/hooks (default: false)
+}
+
+// SecurityConfig contains security-related settings for workspace protection
+type SecurityConfig struct {
+	// ProtectedPaths is a list of paths (relative to workspace) to mount read-only
+	// These paths are protected to prevent containers from modifying files that could
+	// execute automatically on the host (e.g., git hooks, IDE configs, etc.)
+	// Defaults: [".git/hooks", ".git/config", ".husky", ".vscode"]
+	ProtectedPaths []string `toml:"protected_paths"`
+	// AdditionalProtectedPaths allows adding more paths without replacing defaults
+	AdditionalProtectedPaths []string `toml:"additional_protected_paths"`
+	// DisableProtection completely disables read-only mounting of protected paths
+	DisableProtection bool `toml:"disable_protection"`
+}
+
+// GetEffectiveProtectedPaths returns the combined list of protected paths
+func (s *SecurityConfig) GetEffectiveProtectedPaths() []string {
+	if s.DisableProtection {
+		return nil
+	}
+	paths := make([]string, 0, len(s.ProtectedPaths)+len(s.AdditionalProtectedPaths))
+	paths = append(paths, s.ProtectedPaths...)
+	paths = append(paths, s.AdditionalProtectedPaths...)
+	return paths
+}
+
+// DefaultProtectedPaths returns the default list of paths to protect
+func DefaultProtectedPaths() []string {
+	return []string{
+		".git/hooks",  // Git hooks - execute on git operations
+		".git/config", // Git config - can set core.hooksPath to bypass hooks protection
+		".husky",      // Husky - popular git hooks manager
+		".vscode",     // VS Code - tasks.json can auto-execute, settings.json can inject shell args
+	}
 }
 
 // DefaultsConfig contains default settings
@@ -193,6 +228,11 @@ func GetDefaultConfig() *Config {
 		Git: GitConfig{
 			WritableHooks: ptrBool(false),
 		},
+		Security: SecurityConfig{
+			ProtectedPaths:           DefaultProtectedPaths(),
+			AdditionalProtectedPaths: []string{},
+			DisableProtection:        false,
+		},
 		Limits: LimitsConfig{
 			CPU: CPULimits{
 				Count:     "",
@@ -358,6 +398,17 @@ func (c *Config) Merge(other *Config) {
 	// Only override if explicitly set in the other config (nil means not set)
 	if other.Git.WritableHooks != nil {
 		c.Git.WritableHooks = other.Git.WritableHooks
+	}
+
+	// Merge security settings
+	if len(other.Security.ProtectedPaths) > 0 {
+		c.Security.ProtectedPaths = other.Security.ProtectedPaths
+	}
+	if len(other.Security.AdditionalProtectedPaths) > 0 {
+		c.Security.AdditionalProtectedPaths = append(c.Security.AdditionalProtectedPaths, other.Security.AdditionalProtectedPaths...)
+	}
+	if other.Security.DisableProtection {
+		c.Security.DisableProtection = true
 	}
 
 	// Merge profiles
