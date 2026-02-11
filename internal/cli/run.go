@@ -208,16 +208,18 @@ func runCommand(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		// Protect git hooks by mounting read-only (security feature)
-		protectGitHooks := (cfg.Git.WritableHooks == nil || !*cfg.Git.WritableHooks) && !writableGitHooks
-		if protectGitHooks {
-			if err := session.SetupGitHooksMount(mgr, absWorkspace, useShift); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: Failed to protect git hooks: %v\n", err)
-			} else {
-				// Only log if .git exists
-				gitDir := filepath.Join(absWorkspace, ".git")
-				if _, err := os.Stat(gitDir); err == nil {
-					fmt.Fprintf(os.Stderr, "Protected .git/hooks (mounted read-only)\n")
+		// Protect security-sensitive paths by mounting read-only (security feature)
+		if !writableGitHooks && !cfg.Security.DisableProtection {
+			protectedPaths := cfg.Security.GetEffectiveProtectedPaths()
+			if len(protectedPaths) > 0 {
+				if err := session.SetupSecurityMounts(mgr, absWorkspace, protectedPaths, useShift); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: Failed to setup security mounts: %v\n", err)
+				} else {
+					// Log which paths were actually protected
+					actualPaths := session.GetProtectedPathsForLogging(absWorkspace, protectedPaths)
+					if len(actualPaths) > 0 {
+						fmt.Fprintf(os.Stderr, "Protected paths (mounted read-only): %s\n", strings.Join(actualPaths, ", "))
+					}
 				}
 			}
 		}

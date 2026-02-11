@@ -218,6 +218,26 @@ stop_graceful = true
 # Set to true if you need the container to manage git hooks (same as --writable-git-hooks flag)
 writable_hooks = false
 
+[security]
+# Security-sensitive paths mounted read-only to prevent containers from modifying
+# files that could execute automatically on the host. These paths are protected
+# to prevent supply chain attacks where a compromised AI tool injects malicious code.
+#
+# Default protected paths:
+#   - .git/hooks  (git hooks execute on git operations)
+#   - .git/config (can set core.hooksPath to bypass hooks protection)
+#   - .husky      (husky git hooks manager)
+#   - .vscode     (VS Code tasks.json can auto-execute, settings.json can inject shell args)
+#
+# To replace the default list entirely:
+# protected_paths = [".git/hooks", ".git/config"]
+#
+# To add additional paths without replacing defaults:
+# additional_protected_paths = [".idea", "Makefile"]
+#
+# To disable protection entirely (not recommended):
+# disable_protection = true
+
 # Example profile for Rust development with persistent container
 # [profiles.rust]
 # image = "coi-rust"

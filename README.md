@@ -589,22 +589,42 @@ curl http://<container-ip>:3000
 
 See the [Security Best Practices guide](https://github.com/mensfeld/code-on-incus/wiki/Security-Best-Practices) for detailed security recommendations.
 
-**Automatic Git Hooks Protection (Default):**
+**Automatic Protection of Security-Sensitive Paths (Default):**
 
-COI automatically mounts `.git/hooks` as read-only to prevent containers from modifying git hooks that execute on your host:
+COI automatically mounts security-sensitive paths as read-only to prevent containers from modifying files that could execute automatically on your host:
 
 ```bash
-coi shell                      # .git/hooks mounted read-only (default)
-coi shell --writable-git-hooks # Opt-out if AI needs to manage hooks
+coi shell                      # Protected paths mounted read-only (default)
+coi shell --writable-git-hooks # Opt-out (disables all protection)
 ```
 
-**Why this matters:** Git hooks (pre-commit, post-commit, etc.) execute automatically during git operations. If a container could modify these hooks, malicious code could be injected that runs on your host when you later commit. COI blocks this attack vector by default.
+**Default protected paths:**
+- `.git/hooks` - Git hooks execute on commits, pushes, etc.
+- `.git/config` - Can set `core.hooksPath` to bypass hooks protection
+- `.husky` - Husky git hooks manager
+- `.vscode` - VS Code `tasks.json` can auto-execute, `settings.json` can inject shell args
 
-**Enable writable hooks via config:**
+**Why this matters:** These paths contain files that execute automatically on your host system. If a container could modify them, malicious code could be injected that runs when you commit, open your IDE, or perform other operations. COI blocks these attack vectors by default.
+
+**Customize protected paths via config:**
+```toml
+# ~/.config/coi/config.toml
+[security]
+# Add additional paths without replacing defaults
+additional_protected_paths = [".idea", "Makefile"]
+
+# Or replace the default list entirely
+# protected_paths = [".git/hooks", ".git/config"]
+
+# Disable all protection (not recommended)
+# disable_protection = true
+```
+
+**Legacy option - Enable writable hooks via config:**
 ```toml
 # ~/.config/coi/config.toml
 [git]
-writable_hooks = true
+writable_hooks = true  # Disables all path protection
 ```
 
 **Additional protection - Disable git hooks when committing AI-generated code:**

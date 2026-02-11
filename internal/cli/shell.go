@@ -185,21 +185,28 @@ func shellCommand(cmd *cobra.Command, args []string) error {
 	// Merge limits configuration from config file and CLI flags
 	limitsConfig := mergeLimitsConfig(cmd)
 
+	// Determine protected paths for security mounts
+	// Use config's protected paths unless disabled via flag or config
+	var protectedPaths []string
+	if !writableGitHooks && !cfg.Security.DisableProtection {
+		protectedPaths = cfg.Security.GetEffectiveProtectedPaths()
+	}
+
 	// Setup session
 	setupOpts := session.SetupOptions{
-		WorkspacePath:   absWorkspace,
-		Image:           imageName,
-		Persistent:      persistent,
-		ResumeFromID:    resumeID,
-		Slot:            slotNum,
-		SessionsDir:     sessionsDir,
-		CLIConfigPath:   cliConfigPath,
-		Tool:            toolInstance,
-		NetworkConfig:   &networkConfig,
-		DisableShift:    cfg.Incus.DisableShift,
-		LimitsConfig:    limitsConfig,
-		IncusProject:    cfg.Incus.Project,
-		ProtectGitHooks: (cfg.Git.WritableHooks == nil || !*cfg.Git.WritableHooks) && !writableGitHooks,
+		WorkspacePath:  absWorkspace,
+		Image:          imageName,
+		Persistent:     persistent,
+		ResumeFromID:   resumeID,
+		Slot:           slotNum,
+		SessionsDir:    sessionsDir,
+		CLIConfigPath:  cliConfigPath,
+		Tool:           toolInstance,
+		NetworkConfig:  &networkConfig,
+		DisableShift:   cfg.Incus.DisableShift,
+		LimitsConfig:   limitsConfig,
+		IncusProject:   cfg.Incus.Project,
+		ProtectedPaths: protectedPaths,
 	}
 
 	// Parse and validate mount configuration
