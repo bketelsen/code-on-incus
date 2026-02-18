@@ -207,8 +207,40 @@ install_docker() {
         docker-ce docker-ce-cli containerd.io \
         docker-buildx-plugin docker-compose-plugin
 
-    # Add code user to docker group
+    # Add code user to docker group (belt-and-suspenders, may not be sufficient
+    # on its own — see daemon config below for the reliable fix)
     usermod -aG docker "$CODE_USER"
+
+    # Make the Docker socket accessible to the code user's PRIMARY group.
+    #
+    # Why: incus exec may not call initgroups() when --group is specified,
+    # so supplementary groups (including 'docker') may not be active in the
+    # session. The user's primary group (code, GID 1000) is always active
+    # regardless of how the session was started.
+    #
+    # Two layers of config are needed:
+    #
+    # 1. daemon.json "group": "code" — Docker daemon chowns the socket to
+    #    root:code on startup (works when Docker creates the socket itself).
+    #
+    # 2. docker.socket systemd drop-in SocketGroup=code — Ubuntu's Docker
+    #    package uses systemd socket activation: systemd creates
+    #    /var/run/docker.sock before the daemon starts using the group from
+    #    the socket unit (default: docker). The daemon.json setting alone is
+    #    not enough when systemd socket activation is in play; this drop-in
+    #    ensures the socket is created with root:code (0660) from the start.
+    mkdir -p /etc/docker
+    cat > /etc/docker/daemon.json << 'EOF'
+{
+    "group": "code"
+}
+EOF
+
+    mkdir -p /etc/systemd/system/docker.socket.d
+    cat > /etc/systemd/system/docker.socket.d/override.conf << 'EOF'
+[Socket]
+SocketGroup=code
+EOF
 
     log "Docker $(docker --version 2>/dev/null || echo 'installed')"
 }
