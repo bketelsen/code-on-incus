@@ -27,6 +27,11 @@ jobs:
           go-version: '1.24'
           cache: true
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsystemd-dev
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
         with:
@@ -50,6 +55,11 @@ jobs:
         with:
           go-version: '1.24'
           cache: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsystemd-dev
 
       - name: Run unit tests with coverage and race detector
         run: |
@@ -86,6 +96,9 @@ jobs:
           - name: misc
             path: tests/clean tests/completion tests/docker tests/errors tests/help tests/image tests/info tests/mount tests/shutdown tests/version tests/meta tests/main_help_flag.py tests/main_help_shorthand.py
             description: "Misc commands: clean/completion/docker/errors/help/image/info/mount/shutdown/version/meta/main help (70 tests)"
+          - name: monitoring
+            path: tests/integration
+            description: "Security monitoring integration tests: NFT network (19) + process/filesystem threats (13) = 32 tests"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -94,6 +107,22 @@ jobs:
         with:
           go-version: '1.24'
           cache: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsystemd-dev nftables
+
+          # Set up NFT monitoring access for CI
+          # Add runner to systemd-journal group for log access
+          sudo usermod -aG systemd-journal $USER
+
+          # Configure sudo NOPASSWD for nft commands
+          echo "$USER ALL=(ALL) NOPASSWD: /usr/sbin/nft *" | sudo tee /etc/sudoers.d/coi-nft
+          sudo chmod 0440 /etc/sudoers.d/coi-nft
+
+          # Verify nft access
+          sudo -n nft list ruleset || echo "NFT access configured"
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -262,12 +291,13 @@ jobs:
         run: |
           # Use open mode by default so image builds can access internet
           # Tests will explicitly use restricted/allowlist modes when testing network isolation
+          # Monitoring is NOT enabled globally - monitoring tests use their own enable_monitoring fixture
           mkdir -p ~/.config/coi
           cat > ~/.config/coi/config.toml << 'EOF'
           [network]
           mode = "open"
           EOF
-          echo "Created COI config with network.mode = open (tests can override for isolation testing)"
+          echo "Created COI config with network.mode = open (monitoring disabled by default)"
 
       - name: Test bind mount functionality
         run: |

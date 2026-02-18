@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -11,6 +12,9 @@ import (
 
 	"github.com/mensfeld/code-on-incus/internal/config"
 	"github.com/mensfeld/code-on-incus/internal/container"
+	"github.com/mensfeld/code-on-incus/internal/monitor"
+	"github.com/mensfeld/code-on-incus/internal/network"
+	"github.com/mensfeld/code-on-incus/internal/nftmonitor"
 	"github.com/mensfeld/code-on-incus/internal/session"
 	"github.com/mensfeld/code-on-incus/internal/terminal"
 	"github.com/mensfeld/code-on-incus/internal/tool"
@@ -18,9 +22,10 @@ import (
 )
 
 var (
-	debugShell bool
-	background bool
-	useTmux    bool
+	debugShell    bool
+	background    bool
+	useTmux       bool
+	containerName string
 )
 
 var shellCmd = &cobra.Command{
@@ -52,8 +57,10 @@ func init() {
 	shellCmd.Flags().BoolVar(&debugShell, "debug", false, "Launch interactive bash instead of AI tool (for debugging)")
 	shellCmd.Flags().BoolVar(&background, "background", false, "Run AI tool in background tmux session (detached)")
 	shellCmd.Flags().BoolVar(&useTmux, "tmux", true, "Use tmux for session management (default true)")
+	shellCmd.Flags().StringVar(&containerName, "container", "", "Use existing container (for testing)")
 }
 
+//nolint:gocyclo // Sequential initialization with many configuration paths
 func shellCommand(cmd *cobra.Command, args []string) error {
 	// Validate no unexpected positional arguments
 	if len(args) > 0 {
@@ -207,6 +214,7 @@ func shellCommand(cmd *cobra.Command, args []string) error {
 		LimitsConfig:   limitsConfig,
 		IncusProject:   cfg.Incus.Project,
 		ProtectedPaths: protectedPaths,
+		ContainerName:  containerName,
 	}
 
 	// Parse and validate mount configuration
@@ -233,9 +241,47 @@ func shellCommand(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to save early metadata: %v\n", err)
 	}
 
+	// Start monitoring daemons if enabled (via config or --monitor flag)
+	var monitorDaemon *monitor.Daemon
+	var nftDaemon *nftmonitor.Daemon
+	monitoringEnabled := cfg.Monitoring.Enabled || enableMonitoring
+	if monitoringEnabled {
+		// Override config settings when --monitor flag is used
+		if enableMonitoring {
+			cfg.Monitoring.Enabled = true
+			cfg.Monitoring.AutoKillOnCritical = true
+			cfg.Monitoring.AutoPauseOnHigh = true
+		}
+		// Start traditional monitoring (process/filesystem)
+		if err := startMonitoringDaemon(result.ContainerName, absWorkspace, cfg, &monitorDaemon); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to start monitoring daemon: %v\n", err)
+			// Don't fail the session if monitoring fails
+		}
+
+		// Start nftables monitoring (network only)
+		if cfg.Monitoring.NFT.Enabled {
+			if err := startNFTMonitoringDaemon(result.ContainerName, cfg, &nftDaemon); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Failed to start NFT monitoring: %v\n", err)
+				// Don't fail the session if NFT monitoring fails
+			}
+		}
+	}
+
 	// Setup cleanup on exit
 	defer func() {
 		fmt.Fprintf(os.Stderr, "\nCleaning up session...\n")
+
+		// Stop monitoring daemons if they were started
+		if monitorDaemon != nil {
+			if err := monitorDaemon.Stop(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Failed to stop monitoring daemon: %v\n", err)
+			}
+		}
+		if nftDaemon != nil {
+			if err := nftDaemon.Stop(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Failed to stop NFT monitoring: %v\n", err)
+			}
+		}
 
 		// Stop timeout monitor if it was started
 		if result.TimeoutMonitor != nil {
@@ -662,4 +708,116 @@ func runCLIInTmux(result *session.SetupResult, sessionID string, detached bool, 
 		_, err := result.Manager.ExecCommand(attachCmd, attachOpts)
 		return err
 	}
+}
+
+// startMonitoringDaemon starts the background monitoring daemon
+func startMonitoringDaemon(containerName, workspacePath string, cfg *config.Config, daemon **monitor.Daemon) error {
+	// Get home directory for audit log
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	auditLogPath := filepath.Join(homeDir, ".coi", "audit", containerName+".jsonl")
+
+	// Get allowed CIDRs from network config
+	allowedCIDRs := []string{}
+	// TODO: Convert allowed domains to CIDRs if in allowlist mode
+
+	// Create daemon config
+	daemonCfg := monitor.DaemonConfig{
+		ContainerName:        containerName,
+		WorkspacePath:        workspacePath,
+		PollInterval:         time.Duration(cfg.Monitoring.PollIntervalSec) * time.Second,
+		AuditLogPath:         auditLogPath,
+		AllowedCIDRs:         allowedCIDRs,
+		AllowedDomains:       cfg.Network.AllowedDomains,
+		FileReadThresholdMB:  cfg.Monitoring.FileReadThresholdMB,
+		FileReadRateMBPerSec: cfg.Monitoring.FileReadRateMBPerSec,
+		AutoPauseOnHigh:      cfg.Monitoring.AutoPauseOnHigh,
+		AutoKillOnCritical:   cfg.Monitoring.AutoKillOnCritical,
+		OnThreat: func(threat monitor.ThreatEvent) {
+			// Display alert in terminal
+			fmt.Fprint(os.Stderr, monitor.FormatThreatAlert(threat))
+		},
+		OnError: func(err error) {
+			fmt.Fprintf(os.Stderr, "[monitor] Error: %v\n", err)
+		},
+	}
+
+	// Start daemon
+	ctx := context.Background()
+	d, err := monitor.StartDaemon(ctx, daemonCfg)
+	if err != nil {
+		return err
+	}
+
+	*daemon = d
+	fmt.Fprintf(os.Stderr, "Monitoring daemon started (audit log: %s)\n", auditLogPath)
+	return nil
+}
+
+// startNFTMonitoringDaemon starts the nftables network monitoring daemon
+func startNFTMonitoringDaemon(containerName string, cfg *config.Config, daemon **nftmonitor.Daemon) error {
+	// Get container IP
+	containerIP, err := network.GetContainerIPWithRetries(containerName, 3)
+	if err != nil {
+		return fmt.Errorf("failed to get container IP: %w", err)
+	}
+
+	// Get gateway IP
+	gatewayIP, err := network.GetContainerGatewayIP(containerName)
+	if err != nil {
+		// Non-fatal - we can still monitor without gateway IP check
+		fmt.Fprintf(os.Stderr, "Warning: Failed to get gateway IP: %v\n", err)
+		gatewayIP = ""
+	}
+
+	// Get home directory for audit log
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	auditLogPath := filepath.Join(homeDir, ".coi", "audit", containerName+"-nft.jsonl")
+
+	// Get allowed CIDRs from network config
+	allowedCIDRs := []string{}
+	// TODO: Convert allowed domains to CIDRs if in allowlist mode
+
+	// Create NFT daemon config
+	nftCfg := nftmonitor.Config{
+		ContainerName:      containerName,
+		ContainerIP:        containerIP,
+		AllowedCIDRs:       allowedCIDRs,
+		GatewayIP:          gatewayIP,
+		AuditLogPath:       auditLogPath,
+		RateLimitPerSecond: cfg.Monitoring.NFT.RateLimitPerSecond,
+		DNSQueryThreshold:  cfg.Monitoring.NFT.DNSQueryThreshold,
+		LogDNSQueries:      cfg.Monitoring.NFT.LogDNSQueries,
+		LimaHost:           cfg.Monitoring.NFT.LimaHost,
+		OnThreat: func(threat nftmonitor.ThreatEvent) {
+			// Display alert in terminal using existing formatter
+			monitorThreat := monitor.ThreatEvent{
+				Timestamp:   threat.Timestamp,
+				Level:       monitor.ThreatLevel(threat.Level),
+				Category:    threat.Category,
+				Title:       threat.Title,
+				Description: threat.Description,
+				Evidence:    threat.Evidence,
+			}
+			fmt.Fprint(os.Stderr, monitor.FormatThreatAlert(monitorThreat))
+		},
+	}
+
+	// Start daemon
+	ctx := context.Background()
+	d, err := nftmonitor.StartDaemon(ctx, nftCfg)
+	if err != nil {
+		return err
+	}
+
+	*daemon = d
+	fmt.Fprintf(os.Stderr, "NFT monitoring started (container IP: %s, audit log: %s)\n", containerIP, auditLogPath)
+	return nil
 }

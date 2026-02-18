@@ -85,10 +85,23 @@ func RunAllChecks(cfg *config.Config, verbose bool) *HealthResult {
 	checks["container_connectivity"] = CheckContainerConnectivity(cfg.Defaults.Image)
 	checks["network_restriction"] = CheckNetworkRestriction(cfg.Defaults.Image)
 
+	// NFT monitoring checks (only if enabled in config)
+	if cfg.Monitoring.NFT.Enabled {
+		checks["nftables"] = CheckNFTables()
+		checks["systemd_journal"] = CheckSystemdJournal()
+		checks["libsystemd"] = CheckLibsystemd()
+	}
+
+	// Process/Filesystem monitoring checks (always run)
+	checks["monitoring_configuration"] = CheckMonitoringConfiguration(cfg)
+	checks["audit_log_directory"] = CheckAuditLogDirectory()
+	checks["cgroup_availability"] = CheckCgroupAvailability()
+
 	// Optional checks (only if verbose)
 	if verbose {
 		checks["dns_resolution"] = CheckDNS()
 		checks["passwordless_sudo"] = CheckPasswordlessSudo()
+		checks["process_monitoring"] = CheckProcessMonitoringCapability(cfg.Defaults.Image)
 	}
 
 	// Calculate summary

