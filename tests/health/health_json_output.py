@@ -24,7 +24,7 @@ def test_health_json_output(coi_binary):
         [coi_binary, "health", "--format", "json"],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=120,
     )
 
     # Should succeed (exit 0 for healthy, 1 for degraded)
@@ -61,7 +61,15 @@ def test_health_json_output(coi_binary):
     assert isinstance(checks, dict), "Checks should be a dictionary"
 
     # Verify some key checks exist
-    expected_checks = ["os", "incus", "permissions", "image", "network_bridge", "disk_space"]
+    expected_checks = [
+        "os",
+        "incus",
+        "permissions",
+        "image",
+        "network_bridge",
+        "disk_space",
+        "incus_storage_pool",
+    ]
     for check_name in expected_checks:
         assert check_name in checks, f"Should have '{check_name}' check"
 

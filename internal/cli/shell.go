@@ -26,6 +26,7 @@ var (
 	background    bool
 	useTmux       bool
 	containerName string
+	toolFlag      string
 )
 
 var shellCmd = &cobra.Command{
@@ -43,6 +44,7 @@ All sessions run in tmux for monitoring and detach/reattach support:
 
 Examples:
   coi shell                         # Interactive session in tmux
+  coi shell --tool opencode         # Use opencode instead of configured tool
   coi shell --background            # Run in background (detached)
   coi shell --resume                # Resume latest session (auto)
   coi shell --resume=<session-id>   # Resume specific session (note: = is required)
@@ -58,6 +60,7 @@ func init() {
 	shellCmd.Flags().BoolVar(&background, "background", false, "Run AI tool in background tmux session (detached)")
 	shellCmd.Flags().BoolVar(&useTmux, "tmux", true, "Use tmux for session management (default true)")
 	shellCmd.Flags().StringVar(&containerName, "container", "", "Use existing container (for testing)")
+	shellCmd.Flags().StringVar(&toolFlag, "tool", "", "Override AI tool (e.g. claude, opencode, aider)")
 }
 
 //nolint:gocyclo // Sequential initialization with many configuration paths
@@ -79,6 +82,10 @@ func shellCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get configured tool (needed to determine tool-specific sessions directory)
+	// --tool flag overrides whatever is in .coi.toml or global config
+	if toolFlag != "" {
+		cfg.Tool.Name = toolFlag
+	}
 	toolInstance, err := getConfiguredTool(cfg)
 	if err != nil {
 		return err
@@ -104,16 +111,35 @@ func shellCommand(cmd *cobra.Command, args []string) error {
 	// Check if resume/continue flag was explicitly set
 	resumeFlagSet := cmd.Flags().Changed("resume") || cmd.Flags().Changed("continue")
 
+	// Check if tool uses workspace-based sessions (like opencode stores in .opencode/)
+	// These tools don't need COI session tracking - their data is in the workspace
+	isWorkspaceSessionTool := false
+	if _, ok := toolInstance.(tool.ToolWithHomeConfigFile); ok {
+		// File-based tools like opencode store sessions in workspace, not ~/.coi/sessions-*
+		// Check for .opencode/ or similar in workspace
+		workspaceSessionDir := filepath.Join(absWorkspace, ".opencode")
+		if info, err := os.Stat(workspaceSessionDir); err == nil && info.IsDir() {
+			isWorkspaceSessionTool = true
+		}
+	}
+
 	// Auto-detect if flag was set but value is empty or "auto"
 	if resumeFlagSet && (resumeID == "" || resumeID == "auto") {
-		// Auto-detect latest for workspace (only looks at sessions from the same workspace)
-		resumeID, err = session.GetLatestSessionForWorkspace(sessionsDir, absWorkspace)
-		if err != nil {
-			return fmt.Errorf("no previous session to resume for this workspace: %w", err)
+		if isWorkspaceSessionTool {
+			// For workspace-session tools, use a synthetic session ID
+			// The actual session data is in the workspace directory
+			resumeID = "workspace-session"
+			fmt.Fprintf(os.Stderr, "Resuming %s session from workspace\n", toolInstance.Name())
+		} else {
+			// Auto-detect latest for workspace (only looks at sessions from the same workspace)
+			resumeID, err = session.GetLatestSessionForWorkspace(sessionsDir, absWorkspace)
+			if err != nil {
+				return fmt.Errorf("no previous session to resume for this workspace: %w", err)
+			}
+			fmt.Fprintf(os.Stderr, "Auto-detected session: %s\n", resumeID)
 		}
-		fmt.Fprintf(os.Stderr, "Auto-detected session: %s\n", resumeID)
-	} else if resumeID != "" {
-		// Validate that the explicitly provided session exists
+	} else if resumeID != "" && !isWorkspaceSessionTool {
+		// Validate that the explicitly provided session exists (skip for workspace-session tools)
 		if !session.SessionExists(sessionsDir, resumeID) {
 			return fmt.Errorf("session '%s' not found - check available sessions with: coi list --all", resumeID)
 		}
@@ -122,7 +148,8 @@ func shellCommand(cmd *cobra.Command, args []string) error {
 
 	// When resuming, inherit persistent flag from the original session
 	// unless it was explicitly overridden by the user
-	if resumeID != "" {
+	// Skip for workspace-session tools (they don't have COI metadata files)
+	if resumeID != "" && !isWorkspaceSessionTool {
 		metadataPath := filepath.Join(sessionsDir, resumeID, "metadata.json")
 		if metadata, err := session.LoadSessionMetadata(metadataPath); err == nil {
 			// Inherit persistent flag if not explicitly set by user
@@ -182,10 +209,15 @@ func shellCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	// Determine CLI config path based on tool
-	// For ENV-based tools (ConfigDirName returns ""), this will be empty
+	// For file-based tools (ToolWithHomeConfigFile), point at the single config file.
+	// For directory-based tools (ConfigDirName != ""), point at the config directory.
+	// For ENV-based tools (both return ""), leave empty.
 	var cliConfigPath string
-	configDirName := toolInstance.ConfigDirName()
-	if configDirName != "" {
+	if twh, ok := toolInstance.(tool.ToolWithHomeConfigFile); ok {
+		// File-based config (e.g., ~/.opencode.json)
+		cliConfigPath = filepath.Join(homeDir, twh.HomeConfigFileName())
+	} else if configDirName := toolInstance.ConfigDirName(); configDirName != "" {
+		// Directory-based config (e.g., ~/.claude/)
 		cliConfigPath = filepath.Join(homeDir, configDirName)
 	}
 

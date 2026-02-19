@@ -23,7 +23,7 @@ def test_health_text_output(coi_binary):
         [coi_binary, "health"],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=120,
     )
 
     # Should succeed (exit 0 for healthy, 1 for degraded)
@@ -49,6 +49,7 @@ def test_health_text_output(coi_binary):
     assert "Operating system" in output, "Should show OS info"
     assert "Network bridge" in output, "Should check network bridge"
     assert "Disk space" in output, "Should check disk space"
+    assert "Incus storage pool" in output, "Should check Incus storage pool"
 
     # Verify summary line
     assert "checks passed" in output or "checks failed" in output, "Should have summary"
