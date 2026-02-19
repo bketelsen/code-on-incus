@@ -10,7 +10,7 @@
 
 **Secure and Fast Container Runtime for AI Coding Tools on Linux and macOS**
 
-Run AI coding assistants (Claude Code, Aider, and more) in isolated, production-grade Incus containers with zero permission headaches, perfect file ownership, and true multi-session support.
+Run AI coding assistants (Claude Code, opencode, Aider, and more) in isolated, production-grade Incus containers with zero permission headaches, perfect file ownership, and true multi-session support.
 
 **Limited Blast Radius:** Prepare your workspace upfront, let the AI agent run in isolation, validate the outcome. No SSH keys, no environment variables, no credentials exposed. If compromised, damage is contained to your workspace. Network isolation helps prevent data exfiltration. Your host system stays protected.
 
@@ -92,6 +92,9 @@ coi build
 # Start coding with your preferred AI tool (defaults to Claude Code)
 cd your-project
 coi shell
+
+# Or use opencode instead
+coi shell --tool opencode
 
 # That's it! Your AI coding assistant is now running in an isolated container with:
 # - Your project mounted at /workspace
