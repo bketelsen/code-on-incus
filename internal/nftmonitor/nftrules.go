@@ -54,6 +54,7 @@ func (rm *RuleManager) RemoveRules() error {
 
 	// Find and delete all rules with our log prefix
 	lines := strings.Split(string(output), "\n")
+
 	for _, line := range lines {
 		if strings.Contains(line, fmt.Sprintf("NFT_COI[%s]", rm.config.ContainerIP)) ||
 			strings.Contains(line, fmt.Sprintf("NFT_DNS[%s]", rm.config.ContainerIP)) ||

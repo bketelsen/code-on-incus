@@ -344,7 +344,6 @@ func (m *Manager) Teardown(ctx context.Context, containerName string) error {
 		if m.containerIP == "" {
 			containerIP, err := GetContainerIP(containerName)
 			if err != nil {
-				log.Printf("Warning: could not get container IP for cleanup: %v", err)
 				return nil // Container might be already deleted, and IP wasn't cached
 			}
 			m.containerIP = containerIP
