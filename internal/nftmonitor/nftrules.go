@@ -1,10 +1,12 @@
 package nftmonitor
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // RuleManager manages nftables LOG rules for container monitoring
@@ -23,6 +25,11 @@ func NewRuleManager(cfg *Config) *RuleManager {
 
 // AddRules adds nftables LOG rules for the container
 func (rm *RuleManager) AddRules() error {
+	// First, ensure the ip filter table and FORWARD chain exist
+	if err := rm.ensureChainExists(); err != nil {
+		return fmt.Errorf("failed to ensure chain exists: %w", err)
+	}
+
 	// Rule 1: High priority - Always log suspicious traffic (no rate limit)
 	// Metadata endpoint, RFC1918, suspicious ports
 	if err := rm.addSuspiciousTrafficRule(); err != nil {
@@ -47,25 +54,59 @@ func (rm *RuleManager) AddRules() error {
 // RemoveRules removes all nftables LOG rules added by this manager
 func (rm *RuleManager) RemoveRules() error {
 	// List all rules with handles in FORWARD chain
-	output, err := rm.runNFTCommand("list", "chain", "ip", "filter", "FORWARD", "-a")
+	// Note: -a must come before the command (nft -a list chain...)
+	output, err := rm.runNFTCommand("-a", "list", "chain", "ip", "filter", "FORWARD")
 	if err != nil {
 		return fmt.Errorf("failed to list rules: %w", err)
 	}
 
 	// Find and delete all rules with our log prefix
 	lines := strings.Split(string(output), "\n")
+	containerIP := rm.config.ContainerIP
 
+	rulesRemoved := 0
 	for _, line := range lines {
-		if strings.Contains(line, fmt.Sprintf("NFT_COI[%s]", rm.config.ContainerIP)) ||
-			strings.Contains(line, fmt.Sprintf("NFT_DNS[%s]", rm.config.ContainerIP)) ||
-			strings.Contains(line, fmt.Sprintf("NFT_SUSPICIOUS[%s]", rm.config.ContainerIP)) {
+		if strings.Contains(line, fmt.Sprintf("NFT_COI[%s]", containerIP)) ||
+			strings.Contains(line, fmt.Sprintf("NFT_DNS[%s]", containerIP)) ||
+			strings.Contains(line, fmt.Sprintf("NFT_SUSPICIOUS[%s]", containerIP)) {
 			// Extract handle number from line like: "... # handle 123"
 			if handle := extractHandle(line); handle != "" {
 				if err := rm.deleteRuleByHandle(handle); err != nil {
 					return fmt.Errorf("failed to delete rule handle %s: %w", handle, err)
 				}
+				rulesRemoved++
 			}
 		}
+	}
+
+	if rulesRemoved == 0 {
+		// This might indicate a problem - we added rules but found none to remove
+		// Could happen if container IP changed or rules were already cleaned
+		return fmt.Errorf("no NFT rules found to remove for IP %s (this may indicate rules were not created or IP changed)", containerIP)
+	}
+
+	return nil
+}
+
+// ensureChainExists creates the ip filter table and FORWARD chain if they don't exist
+// This is needed because nftables doesn't create iptables-legacy compatible tables by default
+func (rm *RuleManager) ensureChainExists() error {
+	// Check if the chain exists
+	_, err := rm.runNFTCommand("list", "chain", "ip", "filter", "FORWARD")
+	if err == nil {
+		// Chain already exists
+		return nil
+	}
+
+	// Create the table if it doesn't exist (ignore error if already exists)
+	_, _ = rm.runNFTCommand("add", "table", "ip", "filter")
+
+	// Create the FORWARD chain as a filter chain
+	// type filter, hook forward, priority 0 (same as iptables FORWARD)
+	_, err = rm.runNFTCommand("add", "chain", "ip", "filter", "FORWARD",
+		"{", "type", "filter", "hook", "forward", "priority", "0", ";", "}")
+	if err != nil {
+		return fmt.Errorf("failed to create FORWARD chain: %w", err)
 	}
 
 	return nil
@@ -74,11 +115,14 @@ func (rm *RuleManager) RemoveRules() error {
 // addSuspiciousTrafficRule adds high-priority rule for suspicious destinations
 func (rm *RuleManager) addSuspiciousTrafficRule() error {
 	// Metadata endpoint + RFC1918 addresses + suspicious ports
+	// Note: log prefix must be quoted because [] are special nft syntax characters
+	// Use "insert" instead of "add" to place rules at the BEGINNING of the chain
+	// This ensures our LOG rules run BEFORE any ACCEPT rules from firewalld
 	ruleArgs := []string{
-		"add", "rule", "ip", "filter", "FORWARD",
+		"insert", "rule", "ip", "filter", "FORWARD",
 		"ip", "saddr", rm.config.ContainerIP,
 		"ip", "daddr", "{", "169.254.169.254", ",", "10.0.0.0/8", ",", "172.16.0.0/12", ",", "192.168.0.0/16", "}",
-		"log", "prefix", fmt.Sprintf("NFT_SUSPICIOUS[%s]: ", rm.config.ContainerIP),
+		"log", "prefix", fmt.Sprintf(`"NFT_SUSPICIOUS[%s]: "`, rm.config.ContainerIP),
 		"level", "info",
 		"counter",
 	}
@@ -88,15 +132,15 @@ func (rm *RuleManager) addSuspiciousTrafficRule() error {
 		return err
 	}
 
-	// Add rule for suspicious ports
+	// Insert rule for suspicious ports
 	suspiciousPorts := []string{"4444", "5555", "1234", "31337", "12345", "6666-6697"}
 	portsArgs := []string{
-		"add", "rule", "ip", "filter", "FORWARD",
+		"insert", "rule", "ip", "filter", "FORWARD",
 		"ip", "saddr", rm.config.ContainerIP,
 		"tcp", "dport", "{",
 	}
 	portsArgs = append(portsArgs, strings.Join(suspiciousPorts, ","))
-	portsArgs = append(portsArgs, "}", "log", "prefix", fmt.Sprintf("NFT_SUSPICIOUS[%s]: ", rm.config.ContainerIP),
+	portsArgs = append(portsArgs, "}", "log", "prefix", fmt.Sprintf(`"NFT_SUSPICIOUS[%s]: "`, rm.config.ContainerIP),
 		"level", "info", "counter")
 
 	_, err = rm.runNFTCommand(portsArgs...)
@@ -106,10 +150,10 @@ func (rm *RuleManager) addSuspiciousTrafficRule() error {
 // addDNSRule adds medium-priority rule for DNS queries
 func (rm *RuleManager) addDNSRule() error {
 	ruleArgs := []string{
-		"add", "rule", "ip", "filter", "FORWARD",
+		"insert", "rule", "ip", "filter", "FORWARD",
 		"ip", "saddr", rm.config.ContainerIP,
 		"udp", "dport", "53",
-		"log", "prefix", fmt.Sprintf("NFT_DNS[%s]: ", rm.config.ContainerIP),
+		"log", "prefix", fmt.Sprintf(`"NFT_DNS[%s]: "`, rm.config.ContainerIP),
 		"level", "info",
 		"counter",
 	}
@@ -126,10 +170,10 @@ func (rm *RuleManager) addGeneralTrafficRule() error {
 	}
 
 	ruleArgs := []string{
-		"add", "rule", "ip", "filter", "FORWARD",
+		"insert", "rule", "ip", "filter", "FORWARD",
 		"ip", "saddr", rm.config.ContainerIP,
 		"limit", "rate", fmt.Sprintf("%d/second", rateLimit),
-		"log", "prefix", fmt.Sprintf("NFT_COI[%s]: ", rm.config.ContainerIP),
+		"log", "prefix", fmt.Sprintf(`"NFT_COI[%s]: "`, rm.config.ContainerIP),
 		"level", "info",
 		"counter",
 	}
@@ -144,21 +188,31 @@ func (rm *RuleManager) deleteRuleByHandle(handle string) error {
 	return err
 }
 
+// NFTCommandTimeout is the maximum time to wait for nft commands
+const NFTCommandTimeout = 10 * time.Second
+
 // runNFTCommand executes an nft command with proper sudo/lima handling
+// Uses a timeout to prevent hanging if nft command blocks
 func (rm *RuleManager) runNFTCommand(args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), NFTCommandTimeout)
+	defer cancel()
+
 	var cmd *exec.Cmd
 
 	if rm.config.LimaHost != "" {
 		// Run inside Lima VM
-		cmdArgs := append([]string{"shell", rm.config.LimaHost, "sudo", "nft"}, args...)
-		cmd = exec.Command("limactl", cmdArgs...)
+		cmdArgs := append([]string{"shell", rm.config.LimaHost, "sudo", "-n", "nft"}, args...)
+		cmd = exec.CommandContext(ctx, "limactl", cmdArgs...)
 	} else {
-		// Native Linux - use sudo
-		cmdArgs := append([]string{"nft"}, args...)
-		cmd = exec.Command("sudo", cmdArgs...)
+		// Native Linux - use sudo -n (non-interactive, fail if password required)
+		cmdArgs := append([]string{"-n", "nft"}, args...)
+		cmd = exec.CommandContext(ctx, "sudo", cmdArgs...)
 	}
 
 	output, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return output, fmt.Errorf("nft command timed out after %v", NFTCommandTimeout)
+	}
 	if err != nil {
 		return output, fmt.Errorf("nft command failed: %w (output: %s)", err, string(output))
 	}

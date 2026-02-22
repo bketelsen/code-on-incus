@@ -283,6 +283,7 @@ func shellCommand(cmd *cobra.Command, args []string) error {
 			cfg.Monitoring.Enabled = true
 			cfg.Monitoring.AutoKillOnCritical = true
 			cfg.Monitoring.AutoPauseOnHigh = true
+			cfg.Monitoring.NFT.Enabled = true // Also enable NFT network monitoring
 		}
 		// Start traditional monitoring (process/filesystem)
 		if err := startMonitoringDaemon(result.ContainerName, absWorkspace, cfg, &monitorDaemon); err != nil {
@@ -793,7 +794,7 @@ func startMonitoringDaemon(containerName, workspacePath string, cfg *config.Conf
 	}
 
 	*daemon = d
-	// No terminal output to avoid corrupting TUI - audit log path shown in session info
+	fmt.Fprintf(os.Stderr, "[security] Process/filesystem monitoring started (audit log: %s)\n", auditLogPath)
 	return nil
 }
 
@@ -852,6 +853,6 @@ func startNFTMonitoringDaemon(containerName string, cfg *config.Config, daemon *
 	}
 
 	*daemon = d
-	// No terminal output to avoid corrupting TUI - audit log path shown in session info
+	fmt.Fprintf(os.Stderr, "[security] NFT network monitoring started (audit log: %s)\n", auditLogPath)
 	return nil
 }
