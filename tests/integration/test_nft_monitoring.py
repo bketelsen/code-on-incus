@@ -904,6 +904,131 @@ class TestFirewallRuleCleanupOnAutoKill:
             cleanup_container(container_name, coi_binary)
 
 
+def get_container_veth_name(container_name):
+    """Get the veth interface name for a container using JSON format."""
+    result = subprocess.run(
+        ["incus", "list", container_name, "--format=json"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        return None
+
+    try:
+        containers = json.loads(result.stdout)
+        if not containers:
+            return None
+
+        # Look for eth0's host_name in the network state
+        network = containers[0].get("state", {}).get("network", {})
+        eth0 = network.get("eth0", {})
+        return eth0.get("host_name")
+    except (json.JSONDecodeError, IndexError, KeyError):
+        return None
+
+
+def check_veth_in_firewalld_zone(veth_name):
+    """Check if veth interface is registered in any firewalld zone."""
+    if not veth_name:
+        return False
+
+    # Check nft firewalld table for the veth name
+    result = subprocess.run(
+        ["sudo", "-n", "nft", "list", "table", "inet", "firewalld"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        return False
+
+    return veth_name in result.stdout
+
+
+class TestVethZoneCleanupOnAutoKill:
+    """Test veth zone binding cleanup when containers are auto-killed by responder."""
+
+    @pytest.fixture(autouse=True)
+    def check_nft_available(self, nft_monitoring_available):
+        """Ensure NFT monitoring is available before running tests."""
+        pass
+
+    def test_veth_zone_binding_cleaned_on_auto_kill(self, test_workspace, coi_binary):
+        """Verify veth zone binding is removed when container is auto-killed by responder."""
+        slot = 64
+        container_name = get_container_name_from_workspace(test_workspace, slot)
+
+        # Start session with monitoring AND restricted network (to have veth zone bindings)
+        proc = subprocess.Popen(
+            [
+                coi_binary,
+                "shell",
+                "--workspace",
+                test_workspace,
+                "--slot",
+                str(slot),
+                "--monitor",
+                "--network",
+                "restricted",
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        try:
+            time.sleep(10)
+            if not wait_for_container_ready(container_name, timeout=30):
+                pytest.skip("Container failed to start")
+
+            # Get veth name BEFORE killing (needed for cleanup verification)
+            veth_name = get_container_veth_name(container_name)
+            if not veth_name:
+                pytest.skip("Could not get veth name for container")
+
+            # Note: We don't skip if veth isn't in zone - the cleanup should still run
+            # and the test verifies the end state (veth not in any zone after cleanup)
+
+            # Trigger auto-kill by accessing metadata endpoint (CRITICAL threat)
+            subprocess.run(
+                [
+                    "incus",
+                    "exec",
+                    container_name,
+                    "--",
+                    "curl",
+                    "-m",
+                    "3",
+                    "http://169.254.169.254/",
+                ],
+                capture_output=True,
+                timeout=10,
+            )
+
+            # Wait for responder to detect threat and kill container
+            time.sleep(10)
+
+            # Verify container was killed
+            state = get_container_state(container_name)
+            assert state in ("Stopped", "Unknown"), (
+                f"Container should have been killed but state is {state}"
+            )
+
+            # Verify veth zone binding is cleaned up
+            assert not check_veth_in_firewalld_zone(veth_name), (
+                f"Veth zone binding should be cleaned up for {veth_name} after auto-kill"
+            )
+
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            cleanup_container(container_name, coi_binary)
+
+
 class TestHealthChecks:
     """Test NFT monitoring health checks."""
 
