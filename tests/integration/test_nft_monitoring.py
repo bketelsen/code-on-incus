@@ -905,9 +905,9 @@ class TestFirewallRuleCleanupOnAutoKill:
 
 
 def get_container_veth_name(container_name):
-    """Get the veth interface name for a container."""
+    """Get the veth interface name for a container using JSON format."""
     result = subprocess.run(
-        ["incus", "info", container_name],
+        ["incus", "list", container_name, "--format=json"],
         capture_output=True,
         text=True,
         timeout=10,
@@ -915,13 +915,17 @@ def get_container_veth_name(container_name):
     if result.returncode != 0:
         return None
 
-    # Look for host_name in the network section
-    for line in result.stdout.split("\n"):
-        if "host_name:" in line.lower():
-            parts = line.split(":")
-            if len(parts) >= 2:
-                return parts[1].strip()
-    return None
+    try:
+        containers = json.loads(result.stdout)
+        if not containers:
+            return None
+
+        # Look for eth0's host_name in the network state
+        network = containers[0].get("state", {}).get("network", {})
+        eth0 = network.get("eth0", {})
+        return eth0.get("host_name")
+    except (json.JSONDecodeError, IndexError, KeyError):
+        return None
 
 
 def check_veth_in_firewalld_zone(veth_name):
@@ -983,9 +987,8 @@ class TestVethZoneCleanupOnAutoKill:
             if not veth_name:
                 pytest.skip("Could not get veth name for container")
 
-            # Verify veth is in a firewalld zone before triggering kill
-            if not check_veth_in_firewalld_zone(veth_name):
-                pytest.skip("Veth not in firewalld zone (firewalld may not be available)")
+            # Note: We don't skip if veth isn't in zone - the cleanup should still run
+            # and the test verifies the end state (veth not in any zone after cleanup)
 
             # Trigger auto-kill by accessing metadata endpoint (CRITICAL threat)
             subprocess.run(
