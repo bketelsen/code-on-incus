@@ -114,11 +114,17 @@ func (c *ClaudeTool) GetSandboxSettings() map[string]interface{} {
 	}
 
 	// Set effort level (default to "medium" if not configured)
+	// We set both effortLevel directly AND via env var for maximum compatibility
 	effortLevel := c.effortLevel
 	if effortLevel == "" {
 		effortLevel = "medium"
 	}
 	settings["effortLevel"] = effortLevel
+
+	// Also set via env section (CLAUDE_CODE_EFFORT_LEVEL) as documented
+	settings["env"] = map[string]string{
+		"CLAUDE_CODE_EFFORT_LEVEL": effortLevel,
+	}
 
 	return settings
 }

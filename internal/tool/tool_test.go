@@ -175,6 +175,15 @@ func TestClaudeGetSandboxSettings(t *testing.T) {
 	if settings["effortLevel"] != "medium" {
 		t.Errorf("Expected default effortLevel 'medium', got '%v'", settings["effortLevel"])
 	}
+
+	// Check env section has CLAUDE_CODE_EFFORT_LEVEL
+	env, ok := settings["env"].(map[string]string)
+	if !ok {
+		t.Fatal("Expected env to be map[string]string")
+	}
+	if env["CLAUDE_CODE_EFFORT_LEVEL"] != "medium" {
+		t.Errorf("Expected CLAUDE_CODE_EFFORT_LEVEL 'medium', got '%s'", env["CLAUDE_CODE_EFFORT_LEVEL"])
+	}
 }
 
 func TestClaudeSetEffortLevel(t *testing.T) {
