@@ -80,11 +80,13 @@ type Process struct {
 
 // FilesystemStats holds workspace access statistics
 type FilesystemStats struct {
-	Available        bool    `json:"available"`
-	WorkspacePath    string  `json:"workspace_path,omitempty"`
-	TotalReadMB      float64 `json:"total_read_mb"`
-	ReadRateMBPerSec float64 `json:"read_rate_mb_per_sec"`
-	FilesAccessed    int     `json:"files_accessed,omitempty"`
+	Available         bool    `json:"available"`
+	WorkspacePath     string  `json:"workspace_path,omitempty"`
+	TotalReadMB       float64 `json:"total_read_mb"`
+	ReadRateMBPerSec  float64 `json:"read_rate_mb_per_sec"`
+	TotalWriteMB      float64 `json:"total_write_mb"`
+	WriteRateMBPerSec float64 `json:"write_rate_mb_per_sec"`
+	FilesAccessed     int     `json:"files_accessed,omitempty"`
 	// Disk space monitoring (for /tmp and /workspace)
 	TmpUsedMB      float64 `json:"tmp_used_mb,omitempty"`
 	TmpTotalMB     float64 `json:"tmp_total_mb,omitempty"`
@@ -130,8 +132,10 @@ type DaemonConfig struct {
 	AllowedDomains []string // Domains from network allowlist
 
 	// Threat detection thresholds
-	FileReadThresholdMB  float64 // MB read in poll interval
-	FileReadRateMBPerSec float64 // MB/sec sustained rate
+	FileReadThresholdMB   float64 // MB read in poll interval
+	FileReadRateMBPerSec  float64 // MB/sec sustained rate
+	FileWriteThresholdMB  float64 // MB written in poll interval
+	FileWriteRateMBPerSec float64 // MB/sec sustained write rate
 
 	// Response configuration
 	AutoPauseOnHigh    bool
