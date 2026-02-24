@@ -122,9 +122,9 @@ type ProfileConfig struct {
 
 // ToolConfig represents AI coding tool configuration
 type ToolConfig struct {
-	Name   string            `toml:"name"`   // Tool name: "claude", "aider", "cursor", etc.
-	Binary string            `toml:"binary"` // Binary name to execute (if empty, uses tool name)
-	Claude ClaudeToolConfig  `toml:"claude"` // Claude-specific settings
+	Name   string           `toml:"name"`   // Tool name: "claude", "aider", "cursor", etc.
+	Binary string           `toml:"binary"` // Binary name to execute (if empty, uses tool name)
+	Claude ClaudeToolConfig `toml:"claude"` // Claude-specific settings
 }
 
 // ClaudeToolConfig contains Claude Code-specific settings
