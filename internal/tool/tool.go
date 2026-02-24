@@ -39,7 +39,9 @@ type Tool interface {
 }
 
 // ClaudeTool implements Tool for Claude Code
-type ClaudeTool struct{}
+type ClaudeTool struct {
+	effortLevel string // "low", "medium", "high" - defaults to "medium" if empty
+}
 
 // NewClaude creates a new Claude tool instance
 func NewClaude() Tool {
@@ -101,15 +103,31 @@ func (c *ClaudeTool) DiscoverSessionID(stateDir string) string {
 }
 
 func (c *ClaudeTool) GetSandboxSettings() map[string]interface{} {
-	// Settings to inject into .claude.json for bypassing permissions
-	// This logic is extracted from setup.go:334-336, 420-422
-	return map[string]interface{}{
+	// Settings to inject into .claude/settings.json for bypassing permissions
+	// and setting effort level
+	settings := map[string]interface{}{
 		"allowDangerouslySkipPermissions": true,
 		"bypassPermissionsModeAccepted":   true,
 		"permissions": map[string]string{
 			"defaultMode": "bypassPermissions",
 		},
 	}
+
+	// Set effort level (default to "medium" if not configured)
+	effortLevel := c.effortLevel
+	if effortLevel == "" {
+		effortLevel = "medium"
+	}
+	settings["effortLevel"] = effortLevel
+
+	return settings
+}
+
+// SetEffortLevel sets the effort level for Claude Code.
+// Valid values: "low", "medium", "high".
+// This prevents the interactive effort prompt during autonomous sessions.
+func (c *ClaudeTool) SetEffortLevel(level string) {
+	c.effortLevel = level
 }
 
 // ToolWithHomeConfigFile is an optional interface for tools that store their
@@ -120,4 +138,13 @@ type ToolWithHomeConfigFile interface {
 	// HomeConfigFileName returns the dot-prefixed filename in the home dir
 	// (e.g., ".opencode.json").
 	HomeConfigFileName() string
+}
+
+// ToolWithEffortLevel is an optional interface for tools that support
+// configurable effort levels (e.g., Claude's low/medium/high effort).
+type ToolWithEffortLevel interface {
+	Tool
+	// SetEffortLevel sets the effort level for the tool.
+	// Valid values depend on the tool (e.g., "low", "medium", "high" for Claude).
+	SetEffortLevel(level string)
 }

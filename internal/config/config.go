@@ -122,8 +122,14 @@ type ProfileConfig struct {
 
 // ToolConfig represents AI coding tool configuration
 type ToolConfig struct {
-	Name   string `toml:"name"`   // Tool name: "claude", "aider", "cursor", etc.
-	Binary string `toml:"binary"` // Binary name to execute (if empty, uses tool name)
+	Name   string            `toml:"name"`   // Tool name: "claude", "aider", "cursor", etc.
+	Binary string            `toml:"binary"` // Binary name to execute (if empty, uses tool name)
+	Claude ClaudeToolConfig  `toml:"claude"` // Claude-specific settings
+}
+
+// ClaudeToolConfig contains Claude Code-specific settings
+type ClaudeToolConfig struct {
+	EffortLevel string `toml:"effort_level"` // Effort level: "low", "medium", "high" (default: "medium")
 }
 
 // MountEntry represents a single directory mount configuration
@@ -424,6 +430,10 @@ func (c *Config) Merge(other *Config) {
 	}
 	if other.Tool.Binary != "" {
 		c.Tool.Binary = other.Tool.Binary
+	}
+	// Merge Claude-specific settings
+	if other.Tool.Claude.EffortLevel != "" {
+		c.Tool.Claude.EffortLevel = other.Tool.Claude.EffortLevel
 	}
 	// For DisableShift, if the other config sets it to true, use it
 	if other.Incus.DisableShift {

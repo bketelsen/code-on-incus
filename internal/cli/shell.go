@@ -438,6 +438,15 @@ func getConfiguredTool(cfg *config.Config) (tool.Tool, error) {
 		return nil, fmt.Errorf("failed to get tool '%s': %w", toolName, err)
 	}
 
+	// Set effort level if the tool supports it (Claude-specific)
+	if twel, ok := t.(tool.ToolWithEffortLevel); ok {
+		effortLevel := cfg.Tool.Claude.EffortLevel
+		// If not configured, the tool's GetSandboxSettings will use its default
+		if effortLevel != "" {
+			twel.SetEffortLevel(effortLevel)
+		}
+	}
+
 	return t, nil
 }
 

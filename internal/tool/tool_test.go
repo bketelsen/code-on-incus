@@ -170,6 +170,52 @@ func TestClaudeGetSandboxSettings(t *testing.T) {
 	if permissions["defaultMode"] != "bypassPermissions" {
 		t.Errorf("Expected defaultMode 'bypassPermissions', got '%s'", permissions["defaultMode"])
 	}
+
+	// Check effortLevel defaults to "medium"
+	if settings["effortLevel"] != "medium" {
+		t.Errorf("Expected default effortLevel 'medium', got '%v'", settings["effortLevel"])
+	}
+}
+
+func TestClaudeSetEffortLevel(t *testing.T) {
+	tool := NewClaude()
+
+	// Cast to ToolWithEffortLevel
+	twel, ok := tool.(ToolWithEffortLevel)
+	if !ok {
+		t.Fatal("Claude tool should implement ToolWithEffortLevel")
+	}
+
+	// Test setting to "high"
+	twel.SetEffortLevel("high")
+	settings := tool.GetSandboxSettings()
+	if settings["effortLevel"] != "high" {
+		t.Errorf("Expected effortLevel 'high', got '%v'", settings["effortLevel"])
+	}
+
+	// Test setting to "low"
+	twel.SetEffortLevel("low")
+	settings = tool.GetSandboxSettings()
+	if settings["effortLevel"] != "low" {
+		t.Errorf("Expected effortLevel 'low', got '%v'", settings["effortLevel"])
+	}
+
+	// Test setting to "medium"
+	twel.SetEffortLevel("medium")
+	settings = tool.GetSandboxSettings()
+	if settings["effortLevel"] != "medium" {
+		t.Errorf("Expected effortLevel 'medium', got '%v'", settings["effortLevel"])
+	}
+}
+
+func TestClaudeEffortLevelDefault(t *testing.T) {
+	// When effortLevel is not set, GetSandboxSettings should default to "medium"
+	tool := NewClaude()
+	settings := tool.GetSandboxSettings()
+
+	if settings["effortLevel"] != "medium" {
+		t.Errorf("Expected default effortLevel 'medium', got '%v'", settings["effortLevel"])
+	}
 }
 
 func TestRegistryGet_Claude(t *testing.T) {

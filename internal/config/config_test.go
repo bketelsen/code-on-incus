@@ -412,6 +412,61 @@ func TestToolConfigMerge(t *testing.T) {
 	}
 }
 
+func TestClaudeEffortLevelMerge(t *testing.T) {
+	tests := []struct {
+		name          string
+		baseEffort    string
+		otherEffort   string
+		expectedLevel string
+	}{
+		{
+			name:          "merge effort from empty base",
+			baseEffort:    "",
+			otherEffort:   "high",
+			expectedLevel: "high",
+		},
+		{
+			name:          "merge effort overwrites base",
+			baseEffort:    "low",
+			otherEffort:   "medium",
+			expectedLevel: "medium",
+		},
+		{
+			name:          "empty other preserves base",
+			baseEffort:    "high",
+			otherEffort:   "",
+			expectedLevel: "high",
+		},
+		{
+			name:          "both empty stays empty",
+			baseEffort:    "",
+			otherEffort:   "",
+			expectedLevel: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			base := GetDefaultConfig()
+			base.Tool.Claude.EffortLevel = tt.baseEffort
+
+			other := &Config{
+				Tool: ToolConfig{
+					Claude: ClaudeToolConfig{
+						EffortLevel: tt.otherEffort,
+					},
+				},
+			}
+
+			base.Merge(other)
+
+			if base.Tool.Claude.EffortLevel != tt.expectedLevel {
+				t.Errorf("Expected effort level '%s', got '%s'", tt.expectedLevel, base.Tool.Claude.EffortLevel)
+			}
+		})
+	}
+}
+
 func TestPreserveWorkspacePathMerge(t *testing.T) {
 	tests := []struct {
 		name     string
