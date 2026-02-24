@@ -769,7 +769,34 @@ func setupCLIConfig(mgr *container.Manager, hostCLIConfigPath, homeDir string, t
 
 		logger(fmt.Sprintf("%s setup complete", stateConfigFilename))
 	} else if os.IsNotExist(err) {
-		logger(fmt.Sprintf("Warning: %s not found at %s, skipping", stateConfigFilename, stateConfigPath))
+		// Host file doesn't exist, but we may still need to create it in the container
+		// to inject sandbox settings (e.g., effort level for Claude)
+		if len(sandboxSettings) > 0 {
+			logger(fmt.Sprintf("%s not found on host, creating in container with sandbox settings...", stateConfigFilename))
+			stateJsonDest := filepath.Join(homeDir, stateConfigFilename)
+
+			settingsJSON, err := buildJSONFromSettings(sandboxSettings)
+			if err != nil {
+				logger(fmt.Sprintf("Warning: Failed to build JSON from settings: %v", err))
+			} else {
+				// Create new file with sandbox settings
+				createCmd := fmt.Sprintf("echo '%s' > %s", settingsJSON, stateJsonDest)
+				if _, err := mgr.ExecCommand(createCmd, container.ExecCommandOptions{Capture: true}); err != nil {
+					logger(fmt.Sprintf("Warning: Failed to create %s: %v", stateConfigFilename, err))
+				} else {
+					logger(fmt.Sprintf("Created %s with sandbox settings", stateConfigFilename))
+				}
+
+				// Fix ownership if running as non-root user
+				if homeDir != "/root" {
+					if err := mgr.Chown(stateJsonDest, container.CodeUID, container.CodeUID); err != nil {
+						logger(fmt.Sprintf("Warning: Failed to set %s ownership: %v", stateConfigFilename, err))
+					}
+				}
+			}
+		} else {
+			logger(fmt.Sprintf("%s not found at %s and no sandbox settings needed, skipping", stateConfigFilename, stateConfigPath))
+		}
 	} else {
 		return fmt.Errorf("failed to check %s: %w", stateConfigFilename, err)
 	}

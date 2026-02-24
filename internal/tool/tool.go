@@ -121,10 +121,10 @@ func (c *ClaudeTool) GetSandboxSettings() map[string]interface{} {
 	}
 	settings["effortLevel"] = effortLevel
 
-	// Try various acceptance flags that might suppress the effort prompt
-	// (undocumented, but following the pattern of bypassPermissionsModeAccepted)
+	// Effort prompt suppression flags (discovered by examining .claude.json after manual selection)
 	settings["effortLevelAccepted"] = true
 	settings["hasSeenEffortPrompt"] = true
+	settings["effortCalloutDismissed"] = true
 
 	// Also set via env section (CLAUDE_CODE_EFFORT_LEVEL) as documented
 	settings["env"] = map[string]string{

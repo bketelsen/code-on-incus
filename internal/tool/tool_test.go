@@ -183,6 +183,9 @@ func TestClaudeGetSandboxSettings(t *testing.T) {
 	if settings["hasSeenEffortPrompt"] != true {
 		t.Error("Expected hasSeenEffortPrompt to be true")
 	}
+	if settings["effortCalloutDismissed"] != true {
+		t.Error("Expected effortCalloutDismissed to be true")
+	}
 
 	// Check env section has CLAUDE_CODE_EFFORT_LEVEL
 	env, ok := settings["env"].(map[string]string)
