@@ -115,6 +115,45 @@ func (m *Manager) SetTmpfsSize(size string) error {
 	return nil
 }
 
+// GetWorkspacePath returns the container path where the "workspace" device is mounted.
+// Returns "/workspace" as fallback if the workspace device is not found or cannot be read.
+func (m *Manager) GetWorkspacePath() string {
+	output, err := IncusOutput("config", "device", "show", m.ContainerName)
+	if err != nil {
+		return "/workspace" // fallback
+	}
+
+	// Parse YAML output to find workspace device path
+	// Format is:
+	// workspace:
+	//   path: /some/path
+	//   source: /host/path
+	//   type: disk
+	lines := strings.Split(output, "\n")
+	inWorkspace := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "workspace:" {
+			inWorkspace = true
+			continue
+		}
+		if inWorkspace {
+			// Check for a new device (line starts without indent)
+			if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
+				break // moved to a different device
+			}
+			if strings.HasPrefix(trimmed, "path:") {
+				path := strings.TrimSpace(strings.TrimPrefix(trimmed, "path:"))
+				if path != "" {
+					return path
+				}
+			}
+		}
+	}
+
+	return "/workspace" // fallback
+}
+
 // Exec executes a command in the container (no output capture)
 func (m *Manager) Exec(args ...string) error {
 	cmdArgs := append([]string{"exec", m.ContainerName, "--"}, args...)
