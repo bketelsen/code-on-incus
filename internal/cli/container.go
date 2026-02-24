@@ -165,6 +165,11 @@ Examples:
 			envVars, _ := cmd.Flags().GetStringArray("env")
 			cwd, _ := cmd.Flags().GetString("cwd")
 
+			// Auto-detect workspace path if --cwd not explicitly set
+			if !cmd.Flags().Changed("cwd") {
+				cwd = mgr.GetWorkspacePath()
+			}
+
 			// Parse env vars
 			env := make(map[string]string)
 			for _, e := range envVars {
@@ -229,6 +234,11 @@ Examples:
 		groupFlag, _ := cmd.Flags().GetInt("group")
 		envVars, _ := cmd.Flags().GetStringArray("env")
 		cwd, _ := cmd.Flags().GetString("cwd")
+
+		// Auto-detect workspace path if --cwd not explicitly set
+		if !cmd.Flags().Changed("cwd") {
+			cwd = mgr.GetWorkspacePath()
+		}
 
 		// Parse env vars
 		env := make(map[string]string)
@@ -399,7 +409,7 @@ func init() {
 	containerExecCmd.Flags().Int("user", 0, "User ID to run as")
 	containerExecCmd.Flags().Int("group", 0, "Group ID to run as")
 	containerExecCmd.Flags().StringArray("env", []string{}, "Environment variable (KEY=VALUE)")
-	containerExecCmd.Flags().String("cwd", "/workspace", "Working directory")
+	containerExecCmd.Flags().String("cwd", "", "Working directory (auto-detects from container if not set)")
 	containerExecCmd.Flags().Bool("capture", false, "Capture output as JSON")
 	containerExecCmd.Flags().String("format", "json", "Output format when using --capture: json or raw")
 	containerExecCmd.Flags().BoolP("tty", "t", false, "Allocate a pseudo-terminal (PTY)")

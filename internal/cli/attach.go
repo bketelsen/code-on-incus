@@ -128,11 +128,14 @@ func attachToContainer(containerName string) error {
 	// Get TERM with fallback (same as shell command)
 	termEnv := terminal.SanitizeTerm(os.Getenv("TERM"))
 
+	// Get workspace path from container's device config
+	workspacePath := mgr.GetWorkspacePath()
+
 	// Execute as code user with proper environment setup
 	user := container.CodeUID
 	opts := container.ExecCommandOptions{
 		User:        &user,
-		Cwd:         "/workspace",
+		Cwd:         workspacePath,
 		Interactive: true,
 		Env: map[string]string{
 			"TERM": termEnv,
@@ -166,11 +169,14 @@ func attachToContainerWithBash(containerName string) error {
 	// Use container manager for proper user/environment handling
 	mgr := container.NewManager(containerName)
 
+	// Get workspace path from container's device config
+	workspacePath := mgr.GetWorkspacePath()
+
 	// Execute bash as code user
 	user := container.CodeUID
 	opts := container.ExecCommandOptions{
 		User:        &user,
-		Cwd:         "/workspace",
+		Cwd:         workspacePath,
 		Interactive: true,
 	}
 

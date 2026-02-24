@@ -173,11 +173,37 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Determine container workspace path (respects preserve_workspace_path config)
+	containerWorkspacePath := "/workspace"
+	if cfg.Paths.PreserveWorkspacePath {
+		// Validate that the path doesn't conflict with critical system directories
+		cleanPath := filepath.Clean(absWorkspace)
+		disallowedPrefixes := []string{
+			"/etc", "/bin", "/sbin", "/usr", "/root", "/boot", "/sys", "/proc", "/dev", "/lib", "/lib64",
+		}
+		isDisallowed := false
+		for _, prefix := range disallowedPrefixes {
+			if cleanPath == prefix || strings.HasPrefix(cleanPath, prefix+"/") {
+				isDisallowed = true
+				break
+			}
+		}
+		if isDisallowed {
+			fmt.Fprintf(os.Stderr, "Warning: preserve_workspace_path requested for %q conflicts with system directories; using /workspace instead\n", absWorkspace)
+		} else {
+			containerWorkspacePath = cleanPath
+		}
+	}
+
 	// Mount workspace (skip if restarting existing persistent container)
 	useShift := !cfg.Incus.DisableShift
 	if !wasRestarted {
-		fmt.Fprintf(os.Stderr, "Mounting workspace %s...\n", absWorkspace)
-		if err := mgr.MountDisk("workspace", absWorkspace, "/workspace", useShift, false); err != nil {
+		if containerWorkspacePath == absWorkspace {
+			fmt.Fprintf(os.Stderr, "Mounting workspace %s -> %s (preserving host path)...\n", absWorkspace, containerWorkspacePath)
+		} else {
+			fmt.Fprintf(os.Stderr, "Mounting workspace %s -> %s...\n", absWorkspace, containerWorkspacePath)
+		}
+		if err := mgr.MountDisk("workspace", absWorkspace, containerWorkspacePath, useShift, false); err != nil {
 			return fmt.Errorf("failed to mount workspace: %w", err)
 		}
 
@@ -209,11 +235,10 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		}
 
 		// Protect security-sensitive paths by mounting read-only (security feature)
-		// Note: coi run always uses /workspace as the container path
 		if !writableGitHooks && !cfg.Security.DisableProtection {
 			protectedPaths := cfg.Security.GetEffectiveProtectedPaths()
 			if len(protectedPaths) > 0 {
-				if err := session.SetupSecurityMounts(mgr, absWorkspace, "/workspace", protectedPaths, useShift); err != nil {
+				if err := session.SetupSecurityMounts(mgr, absWorkspace, containerWorkspacePath, protectedPaths, useShift); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: Failed to setup security mounts: %v\n", err)
 				} else {
 					// Log which paths were actually protected
@@ -226,6 +251,8 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		fmt.Fprintf(os.Stderr, "Reusing existing workspace mount...\n")
+		// For restarted containers, get the workspace path from container config
+		containerWorkspacePath = mgr.GetWorkspacePath()
 	}
 
 	// Execute command directly (args are already the full command to run)
@@ -234,7 +261,7 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	// Build incus exec command directly with proper args
 	incusArgs := []string{
 		"exec", containerName, "--user", fmt.Sprintf("%d", container.CodeUID),
-		"--group", fmt.Sprintf("%d", container.CodeUID), "--cwd", "/workspace",
+		"--group", fmt.Sprintf("%d", container.CodeUID), "--cwd", containerWorkspacePath,
 	}
 
 	// Add environment variables from -e flags
