@@ -176,6 +176,14 @@ func TestClaudeGetSandboxSettings(t *testing.T) {
 		t.Errorf("Expected default effortLevel 'medium', got '%v'", settings["effortLevel"])
 	}
 
+	// Check effort acceptance flags
+	if settings["effortLevelAccepted"] != true {
+		t.Error("Expected effortLevelAccepted to be true")
+	}
+	if settings["hasSeenEffortPrompt"] != true {
+		t.Error("Expected hasSeenEffortPrompt to be true")
+	}
+
 	// Check env section has CLAUDE_CODE_EFFORT_LEVEL
 	env, ok := settings["env"].(map[string]string)
 	if !ok {
