@@ -241,7 +241,7 @@ func cleanOrphanedResources() (int, bool) {
 		return 0, false
 	}
 
-	totalOrphans := len(orphans.Veths) + len(orphans.FirewallRules) + len(orphans.FirewalldZoneBindings) + len(orphans.NFTMonitorRules)
+	totalOrphans := len(orphans.Veths) + len(orphans.FirewallRules) + len(orphans.FirewalldZoneBindings)
 
 	if totalOrphans == 0 {
 		fmt.Println("  (no orphaned resources found)")
@@ -269,7 +269,7 @@ func cleanOrphanedResources() (int, bool) {
 
 // printOrphanedResources prints the list of orphaned resources found.
 func printOrphanedResources(orphans *cleanup.OrphanedResources) {
-	totalOrphans := len(orphans.Veths) + len(orphans.FirewallRules) + len(orphans.FirewalldZoneBindings) + len(orphans.NFTMonitorRules)
+	totalOrphans := len(orphans.Veths) + len(orphans.FirewallRules) + len(orphans.FirewalldZoneBindings)
 	fmt.Printf("Found %d orphaned resource(s):\n", totalOrphans)
 
 	if len(orphans.Veths) > 0 {
@@ -300,19 +300,6 @@ func printOrphanedResources(orphans *cleanup.OrphanedResources) {
 		}
 	}
 
-	if len(orphans.NFTMonitorRules) > 0 {
-		fmt.Printf("  Orphaned nft monitoring rules (%d):\n", len(orphans.NFTMonitorRules))
-		shown := 0
-		for _, handle := range orphans.NFTMonitorRules {
-			if shown < 10 {
-				fmt.Printf("    - handle %s\n", handle)
-				shown++
-			}
-		}
-		if len(orphans.NFTMonitorRules) > 10 {
-			fmt.Printf("    ... and %d more\n", len(orphans.NFTMonitorRules)-10)
-		}
-	}
 }
 
 // doCleanOrphanedResources performs the actual cleanup of orphaned resources.
@@ -335,11 +322,6 @@ func doCleanOrphanedResources(orphans *cleanup.OrphanedResources) int {
 	if len(orphans.FirewalldZoneBindings) > 0 {
 		zoneBindingsCleaned, _ := cleanup.CleanupOrphanedFirewalldZoneBindings(orphans.FirewalldZoneBindings, logger)
 		cleaned += zoneBindingsCleaned
-	}
-
-	if len(orphans.NFTMonitorRules) > 0 {
-		nftRulesCleaned, _ := cleanup.CleanupOrphanedNFTMonitorRules(orphans.NFTMonitorRules, logger)
-		cleaned += nftRulesCleaned
 	}
 
 	return cleaned
