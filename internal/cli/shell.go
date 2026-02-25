@@ -13,8 +13,6 @@ import (
 	"github.com/mensfeld/code-on-incus/internal/config"
 	"github.com/mensfeld/code-on-incus/internal/container"
 	"github.com/mensfeld/code-on-incus/internal/monitor"
-	"github.com/mensfeld/code-on-incus/internal/network"
-	"github.com/mensfeld/code-on-incus/internal/nftmonitor"
 	"github.com/mensfeld/code-on-incus/internal/session"
 	"github.com/mensfeld/code-on-incus/internal/terminal"
 	"github.com/mensfeld/code-on-incus/internal/tool"
@@ -276,7 +274,6 @@ func shellCommand(cmd *cobra.Command, args []string) error {
 
 	// Start monitoring daemons if enabled (via config or --monitor flag)
 	var monitorDaemon *monitor.Daemon
-	var nftDaemon *nftmonitor.Daemon
 	monitoringEnabled := cfg.Monitoring.Enabled || enableMonitoring
 	if monitoringEnabled {
 		// Override config settings when --monitor flag is used
@@ -284,20 +281,11 @@ func shellCommand(cmd *cobra.Command, args []string) error {
 			cfg.Monitoring.Enabled = true
 			cfg.Monitoring.AutoKillOnCritical = true
 			cfg.Monitoring.AutoPauseOnHigh = true
-			cfg.Monitoring.NFT.Enabled = true // Also enable NFT network monitoring
 		}
 		// Start traditional monitoring (process/filesystem)
 		if err := startMonitoringDaemon(result.ContainerName, absWorkspace, cfg, &monitorDaemon); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Failed to start monitoring daemon: %v\n", err)
 			// Don't fail the session if monitoring fails
-		}
-
-		// Start nftables monitoring (network only)
-		if cfg.Monitoring.NFT.Enabled {
-			if err := startNFTMonitoringDaemon(result.ContainerName, cfg, &nftDaemon); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: Failed to start NFT monitoring: %v\n", err)
-				// Don't fail the session if NFT monitoring fails
-			}
 		}
 	}
 
@@ -312,12 +300,6 @@ func shellCommand(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to stop monitoring daemon: %v\n", err)
 			}
 		}
-		if nftDaemon != nil {
-			if err := nftDaemon.Stop(); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: Failed to stop NFT monitoring: %v\n", err)
-			}
-		}
-
 		// Stop timeout monitor if it was started
 		if result.TimeoutMonitor != nil {
 			result.TimeoutMonitor.Stop()
@@ -745,61 +727,3 @@ func startMonitoringDaemon(containerName, workspacePath string, cfg *config.Conf
 	return nil
 }
 
-// startNFTMonitoringDaemon starts the nftables network monitoring daemon
-func startNFTMonitoringDaemon(containerName string, cfg *config.Config, daemon **nftmonitor.Daemon) error {
-	// Get container IP
-	containerIP, err := network.GetContainerIPWithRetries(containerName, 3)
-	if err != nil {
-		return fmt.Errorf("failed to get container IP: %w", err)
-	}
-
-	// Get gateway IP
-	gatewayIP, err := network.GetContainerGatewayIP(containerName)
-	if err != nil {
-		// Non-fatal - we can still monitor without gateway IP check
-		gatewayIP = ""
-	}
-
-	// Get home directory for audit log
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	auditLogPath := filepath.Join(homeDir, ".coi", "audit", containerName+"-nft.jsonl")
-
-	// Get allowed CIDRs from network config
-	allowedCIDRs := []string{}
-	// TODO: Convert allowed domains to CIDRs if in allowlist mode
-
-	// Create NFT daemon config
-	nftCfg := nftmonitor.Config{
-		ContainerName:      containerName,
-		ContainerIP:        containerIP,
-		AllowedCIDRs:       allowedCIDRs,
-		GatewayIP:          gatewayIP,
-		AuditLogPath:       auditLogPath,
-		RateLimitPerSecond: cfg.Monitoring.NFT.RateLimitPerSecond,
-		DNSQueryThreshold:  cfg.Monitoring.NFT.DNSQueryThreshold,
-		LogDNSQueries:      cfg.Monitoring.NFT.LogDNSQueries,
-		LimaHost:           cfg.Monitoring.NFT.LimaHost,
-		OnThreat: func(threat nftmonitor.ThreatEvent) {
-			// Threats are logged to audit file - no terminal output to avoid corrupting TUI
-		},
-		OnAction: func(action, message string) {
-			// Critical actions (pause/kill) should notify the user
-			fmt.Fprintf(os.Stderr, "\n\n*** SECURITY: %s ***\n\n", message)
-		},
-	}
-
-	// Start daemon
-	ctx := context.Background()
-	d, err := nftmonitor.StartDaemon(ctx, nftCfg)
-	if err != nil {
-		return err
-	}
-
-	*daemon = d
-	fmt.Fprintf(os.Stderr, "[security] NFT network monitoring started (audit log: %s)\n", auditLogPath)
-	return nil
-}
