@@ -14,6 +14,14 @@
 
 ### Features
 
+- [Feature] **Default base image updated to Ubuntu 24.04** - The default base image for containers and the `coi` image is now Ubuntu 24.04 LTS (was 22.04). This applies to `coi build`, `coi shell` fallback, CI, and test fixtures.
+
+### Removed
+
+- [Removed] **NFT network monitoring removed** - The entire nftables-based network monitoring feature has been removed. This includes the `internal/nftmonitor/` package, NFT cleanup helpers, NFT health checks (`CheckNFTables`, `CheckSystemdJournal`, `CheckLibsystemd`), NFT config options (`[monitoring.nft]`), NFT orphan detection/cleanup, the `go-systemd` dependency, the `scripts/install-nft-deps.sh` script, and `docs/NFT-MONITORING.md`. The regular firewall-based network isolation and process/filesystem monitoring remain unchanged.
+
+### Features
+
 - [Feature] **Preserve workspace path option** - Added `preserve_workspace_path` config option that mounts the workspace at the same absolute path inside the container as on the host, instead of `/workspace`. This is useful for tools like opencode that store session data relative to the workspace directory, allowing sessions to persist correctly when the same project is opened from different machines or after container recreation. Configure with `[paths] preserve_workspace_path = true` in `~/.config/coi/config.toml` or `.coi.toml`. Off by default. Fixes #108.
 
 - [Feature] **Large write detection for data exfiltration prevention** - Added detection for large filesystem writes as a potential data exfiltration vector. When write activity exceeds the threshold (default: same as read threshold, 50MB), a HIGH-level threat is triggered. This complements existing read monitoring to catch scenarios where an attacker uses `tar`, `dd`, or similar tools to package and exfiltrate data. Configurable via `file_write_threshold_mb` and `file_write_rate_mb_per_sec` in monitoring config. Includes integration tests for write detection and no-alert scenarios.
@@ -28,9 +36,6 @@
 
 - [Bug Fix] **Large write detection test timeout handling** - Fixed the large write detection integration test timing out on slow CI systems. The test now handles `TimeoutExpired` exceptions gracefully and still verifies threat detection by checking audit logs. Reduced subprocess timeout and added proper cleanup on timeout scenarios.
 
-- [Bug Fix] **NFT monitoring rules now cleaned up on container kill** - Fixed NFT monitoring rules not being removed when containers are killed via `coi kill` or auto-killed by the security responder (e.g., when metadata endpoint access is detected). Added `CleanupNFTMonitoringRules()` to the network package and integrated it into both kill paths: `coi kill` command and the responder's `killContainer()` method. The cleanup gracefully handles cases where no rules exist (monitoring wasn't enabled) or the nftables chain doesn't exist.
-
-- [Bug Fix] **Complete cleanup on all container termination paths** - Fixed two edge cases where network rules were not properly cleaned up: (1) `coi shutdown` was missing NFT monitoring rules cleanup (only firewall rules were cleaned). (2) The security responder's auto-kill was missing firewall rules cleanup (only NFT rules were cleaned). Both termination paths now consistently clean up both firewall rules and NFT monitoring rules. Includes integration tests for both scenarios.
 
 - [Bug Fix] **Veth zone binding cleanup on responder auto-kill** - Fixed firewalld zone bindings not being cleaned up when the security responder auto-kills a container (e.g., when metadata endpoint access is detected). The responder now gets the veth interface name before stopping the container and removes it from firewalld zones after deletion, matching the behavior of `coi kill` and `coi shutdown`. Includes integration test.
 
