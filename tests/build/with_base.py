@@ -33,7 +33,7 @@ apt-get install -y jq
             "--script",
             str(build_script),
             "--base",
-            "images:ubuntu/22.04",
+            "images:ubuntu/24.04",
         ],
         capture_output=True,
         text=True,

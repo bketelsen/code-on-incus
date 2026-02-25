@@ -78,7 +78,7 @@ def test_build_dns_autofix(coi_binary, tmp_path):
     1. Get Incus network name
     2. Break DNS configuration (set 127.0.0.53)
     3. Clean up any existing build container
-    4. Run coi build custom with --base images:ubuntu/22.04
+    4. Run coi build custom with --base images:ubuntu/24.04
     5. Verify build succeeds
     6. Verify DNS auto-fix messages appear in output
     7. Restore DNS configuration
@@ -120,7 +120,7 @@ fi
         )
 
         # Build custom image from fresh Ubuntu base (not coi) to trigger DNS fix
-        # Using --base images:ubuntu/22.04 ensures we start with broken DNS
+        # Using --base images:ubuntu/24.04 ensures we start with broken DNS
         result = subprocess.run(
             [
                 coi_binary,
@@ -128,7 +128,7 @@ fi
                 "custom",
                 image_name,
                 "--base",
-                "images:ubuntu/22.04",
+                "images:ubuntu/24.04",
                 "--script",
                 str(build_script),
             ],
@@ -259,7 +259,7 @@ echo "Static DNS configured and protected."
                 "custom",
                 image_name,
                 "--base",
-                "images:ubuntu/22.04",
+                "images:ubuntu/24.04",
                 "--script",
                 str(build_script),
             ],
@@ -420,7 +420,7 @@ def test_build_dns_autofix_localhost(coi_binary, tmp_path):
     1. Get Incus network name
     2. Break DNS configuration (set 127.0.0.1)
     3. Clean up any existing build container
-    4. Run coi build custom with --base images:ubuntu/22.04
+    4. Run coi build custom with --base images:ubuntu/24.04
     5. Verify build succeeds
     6. Verify DNS auto-fix messages mention localhost DNS
     7. Restore DNS configuration
@@ -469,7 +469,7 @@ fi
                 "custom",
                 image_name,
                 "--base",
-                "images:ubuntu/22.04",
+                "images:ubuntu/24.04",
                 "--script",
                 str(build_script),
             ],
