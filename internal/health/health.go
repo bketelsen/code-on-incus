@@ -86,13 +86,6 @@ func RunAllChecks(cfg *config.Config, verbose bool) *HealthResult {
 	checks["container_connectivity"] = CheckContainerConnectivity(cfg.Defaults.Image)
 	checks["network_restriction"] = CheckNetworkRestriction(cfg.Defaults.Image)
 
-	// NFT monitoring checks (only if enabled in config)
-	if cfg.Monitoring.NFT.Enabled {
-		checks["nftables"] = CheckNFTables()
-		checks["systemd_journal"] = CheckSystemdJournal()
-		checks["libsystemd"] = CheckLibsystemd()
-	}
-
 	// Process/Filesystem monitoring checks (always run)
 	checks["monitoring_configuration"] = CheckMonitoringConfiguration(cfg)
 	checks["audit_log_directory"] = CheckAuditLogDirectory()
