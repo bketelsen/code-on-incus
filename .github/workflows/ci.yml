@@ -286,8 +286,8 @@ jobs:
       - name: Pre-cache base Ubuntu image
         run: |
           # Pre-download the base image to speed up builds
-          echo "Pre-caching Ubuntu 22.04 base image..."
-          incus image copy images:ubuntu/22.04 local: --alias ubuntu-22.04 --auto-update=false || true
+          echo "Pre-caching Ubuntu 24.04 base image..."
+          incus image copy images:ubuntu/24.04 local: --alias ubuntu-24.04 --auto-update=false || true
           incus image list
 
       - name: Build COI binary
@@ -316,7 +316,7 @@ jobs:
           echo "test-content" > /tmp/test-bind-mount/test-file.txt
 
           # Launch test container
-          incus launch images:ubuntu/22.04 test-bind-mount-container
+          incus launch images:ubuntu/24.04 test-bind-mount-container
           sleep 5
 
           # Add bind mount with shift=true
