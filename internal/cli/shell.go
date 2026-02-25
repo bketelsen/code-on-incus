@@ -726,4 +726,3 @@ func startMonitoringDaemon(containerName, workspacePath string, cfg *config.Conf
 	fmt.Fprintf(os.Stderr, "[security] Process/filesystem monitoring started (audit log: %s)\n", auditLogPath)
 	return nil
 }
-

@@ -299,7 +299,6 @@ func printOrphanedResources(orphans *cleanup.OrphanedResources) {
 			fmt.Printf("    ... and %d more\n", len(orphans.FirewalldZoneBindings)-10)
 		}
 	}
-
 }
 
 // doCleanOrphanedResources performs the actual cleanup of orphaned resources.

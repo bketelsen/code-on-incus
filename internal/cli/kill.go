@@ -174,4 +174,3 @@ func cleanupFirewallRulesForIP(containerIP string) error {
 	fm := network.NewFirewallManager(containerIP, "")
 	return fm.RemoveRules()
 }
-

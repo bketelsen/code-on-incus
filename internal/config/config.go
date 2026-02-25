@@ -184,13 +184,13 @@ type RuntimeLimits struct {
 
 // MonitoringConfig contains security monitoring settings
 type MonitoringConfig struct {
-	Enabled               bool                `toml:"enabled"`                   // Enable background monitoring
-	AutoPauseOnHigh       bool                `toml:"auto_pause_on_high"`        // Pause container on high-severity threats
-	AutoKillOnCritical    bool                `toml:"auto_kill_on_critical"`     // Kill container on critical threats
-	PollIntervalSec       int                 `toml:"poll_interval_sec"`         // How often to collect stats
-	FileReadThresholdMB   float64             `toml:"file_read_threshold_mb"`    // MB read in poll interval before alert
-	FileReadRateMBPerSec  float64             `toml:"file_read_rate_mb_per_sec"` // MB/sec sustained rate before alert
-	AuditLogRetentionDays int `toml:"audit_log_retention_days"` // How long to keep audit logs
+	Enabled               bool    `toml:"enabled"`                   // Enable background monitoring
+	AutoPauseOnHigh       bool    `toml:"auto_pause_on_high"`        // Pause container on high-severity threats
+	AutoKillOnCritical    bool    `toml:"auto_kill_on_critical"`     // Kill container on critical threats
+	PollIntervalSec       int     `toml:"poll_interval_sec"`         // How often to collect stats
+	FileReadThresholdMB   float64 `toml:"file_read_threshold_mb"`    // MB read in poll interval before alert
+	FileReadRateMBPerSec  float64 `toml:"file_read_rate_mb_per_sec"` // MB/sec sustained rate before alert
+	AuditLogRetentionDays int     `toml:"audit_log_retention_days"`  // How long to keep audit logs
 }
 
 // GetDefaultConfig returns the default configuration
@@ -531,7 +531,6 @@ func mergeMonitoring(base *MonitoringConfig, other *MonitoringConfig) {
 	if other.AuditLogRetentionDays != 0 {
 		base.AuditLogRetentionDays = other.AuditLogRetentionDays
 	}
-
 }
 
 // GetProfile returns a profile by name, or nil if not found
