@@ -182,15 +182,6 @@ type RuntimeLimits struct {
 	StopGraceful bool   `toml:"stop_graceful"` // graceful vs force stop
 }
 
-// NFTMonitoringConfig contains nftables-based network monitoring settings
-type NFTMonitoringConfig struct {
-	Enabled            bool   `toml:"enabled"`               // Enable nftables monitoring
-	RateLimitPerSecond int    `toml:"rate_limit_per_second"` // Limit log volume (default 100)
-	DNSQueryThreshold  int    `toml:"dns_query_threshold"`   // Alert if >N queries/min (default 100)
-	LogDNSQueries      bool   `toml:"log_dns_queries"`       // Separate DNS logging (default true)
-	LimaHost           string `toml:"lima_host"`             // Lima host for macOS (e.g., "lima-default")
-}
-
 // MonitoringConfig contains security monitoring settings
 type MonitoringConfig struct {
 	Enabled               bool                `toml:"enabled"`                   // Enable background monitoring
@@ -199,8 +190,7 @@ type MonitoringConfig struct {
 	PollIntervalSec       int                 `toml:"poll_interval_sec"`         // How often to collect stats
 	FileReadThresholdMB   float64             `toml:"file_read_threshold_mb"`    // MB read in poll interval before alert
 	FileReadRateMBPerSec  float64             `toml:"file_read_rate_mb_per_sec"` // MB/sec sustained rate before alert
-	AuditLogRetentionDays int                 `toml:"audit_log_retention_days"`  // How long to keep audit logs
-	NFT                   NFTMonitoringConfig `toml:"nft"`                       // nftables network monitoring
+	AuditLogRetentionDays int `toml:"audit_log_retention_days"` // How long to keep audit logs
 }
 
 // GetDefaultConfig returns the default configuration
@@ -296,13 +286,6 @@ func GetDefaultConfig() *Config {
 			FileReadThresholdMB:   50.0,
 			FileReadRateMBPerSec:  10.0,
 			AuditLogRetentionDays: 30,
-			NFT: NFTMonitoringConfig{
-				Enabled:            false,
-				RateLimitPerSecond: 100,
-				DNSQueryThreshold:  100,
-				LogDNSQueries:      true,
-				LimaHost:           "", // Empty for native Linux
-			},
 		},
 		Profiles: make(map[string]ProfileConfig),
 	}
@@ -549,18 +532,6 @@ func mergeMonitoring(base *MonitoringConfig, other *MonitoringConfig) {
 		base.AuditLogRetentionDays = other.AuditLogRetentionDays
 	}
 
-	// Merge NFT monitoring
-	base.NFT.Enabled = other.NFT.Enabled
-	if other.NFT.RateLimitPerSecond != 0 {
-		base.NFT.RateLimitPerSecond = other.NFT.RateLimitPerSecond
-	}
-	if other.NFT.DNSQueryThreshold != 0 {
-		base.NFT.DNSQueryThreshold = other.NFT.DNSQueryThreshold
-	}
-	base.NFT.LogDNSQueries = other.NFT.LogDNSQueries
-	if other.NFT.LimaHost != "" {
-		base.NFT.LimaHost = other.NFT.LimaHost
-	}
 }
 
 // GetProfile returns a profile by name, or nil if not found
