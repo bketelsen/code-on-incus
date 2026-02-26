@@ -32,11 +32,13 @@ code_uid = 1001
 """
         )
 
+    # Run from workspace_dir so config.Load() finds the .coi.toml
     result = subprocess.run(
         [coi_binary, "run", "--workspace", workspace_dir, "--", "id", "-u"],
         capture_output=True,
         text=True,
         timeout=180,
+        cwd=workspace_dir,
     )
 
     assert result.returncode == 0, f"Run should succeed. stderr: {result.stderr}"
