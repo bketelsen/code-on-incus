@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"context"
 	"os/exec"
 	"strings"
 	"sync"
@@ -66,7 +67,7 @@ func TestResponderPauseActualContainer(t *testing.T) {
 		Description: "Testing pause functionality",
 	}
 
-	err = responder.Handle(threat)
+	err = responder.Handle(context.Background(), threat)
 	if err != nil {
 		t.Fatalf("Failed to handle threat: %v", err)
 	}
@@ -93,7 +94,7 @@ func TestResponderPauseActualContainer(t *testing.T) {
 	mu.Unlock()
 
 	// Verify second pause attempt doesn't error
-	err = responder.pauseContainer()
+	err = responder.pauseContainer(context.Background())
 	if err != nil {
 		t.Errorf("Second pause attempt should not error: %v", err)
 	}
@@ -145,7 +146,7 @@ func TestResponderHandlesAlreadyFrozen(t *testing.T) {
 	responder := NewResponder(containerName, true, false, nil, nil)
 
 	// Attempt to pause already-frozen container
-	err = responder.pauseContainer()
+	err = responder.pauseContainer(context.Background())
 	if err != nil {
 		t.Errorf("pauseContainer should handle already-frozen without error: %v", err)
 	}
@@ -192,7 +193,7 @@ func TestResponderDeduplicationIntegration(t *testing.T) {
 
 	// Send same threat 5 times rapidly
 	for i := 0; i < 5; i++ {
-		if err := responder.Handle(threat); err != nil {
+		if err := responder.Handle(context.Background(), threat); err != nil {
 			t.Fatalf("Handle failed: %v", err)
 		}
 	}
@@ -210,7 +211,7 @@ func TestResponderDeduplicationIntegration(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 
 	// Send again
-	if err := responder.Handle(threat); err != nil {
+	if err := responder.Handle(context.Background(), threat); err != nil {
 		t.Fatalf("Handle failed: %v", err)
 	}
 
@@ -251,7 +252,7 @@ func TestResponderMultipleThreatTypes(t *testing.T) {
 
 	for _, threat := range threats {
 		threat.Timestamp = time.Now()
-		if err := responder.Handle(threat); err != nil {
+		if err := responder.Handle(context.Background(), threat); err != nil {
 			t.Fatalf("Handle failed: %v", err)
 		}
 	}

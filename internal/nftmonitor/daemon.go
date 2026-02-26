@@ -156,7 +156,7 @@ func (d *Daemon) processEvents() {
 
 				// Handle threat (logging, alerting, response)
 				debugf("Calling responder.Handle for threat")
-				if err := d.responder.Handle(monitorThreat); err != nil {
+				if err := d.responder.Handle(d.ctx, monitorThreat); err != nil {
 					fmt.Printf("Error handling threat: %v\n", err)
 					debugf("Responder error: %v", err)
 				} else {

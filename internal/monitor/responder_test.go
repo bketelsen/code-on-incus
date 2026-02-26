@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -33,7 +34,7 @@ func TestResponderDeduplication(t *testing.T) {
 
 	// Handle the same threat multiple times rapidly
 	for i := 0; i < 5; i++ {
-		if err := responder.Handle(threat); err != nil {
+		if err := responder.Handle(context.Background(), threat); err != nil {
 			t.Fatalf("Handle failed: %v", err)
 		}
 	}
@@ -76,7 +77,7 @@ func TestResponderDeduplicationExpiry(t *testing.T) {
 	}
 
 	// First alert
-	if err := responder.Handle(threat); err != nil {
+	if err := responder.Handle(context.Background(), threat); err != nil {
 		t.Fatalf("Handle failed: %v", err)
 	}
 
@@ -84,7 +85,7 @@ func TestResponderDeduplicationExpiry(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 
 	// Should alert again
-	if err := responder.Handle(threat); err != nil {
+	if err := responder.Handle(context.Background(), threat); err != nil {
 		t.Fatalf("Handle failed: %v", err)
 	}
 
@@ -139,7 +140,7 @@ func TestResponderDifferentThreatsNotDeduplicated(t *testing.T) {
 	}
 
 	for _, threat := range threats {
-		if err := responder.Handle(threat); err != nil {
+		if err := responder.Handle(context.Background(), threat); err != nil {
 			t.Fatalf("Handle failed: %v", err)
 		}
 	}
@@ -184,7 +185,7 @@ func TestResponderPausedStateTracking(t *testing.T) {
 	}
 
 	// Handle should succeed without error (no pause attempt on already-paused)
-	if err := responder.Handle(threat); err != nil {
+	if err := responder.Handle(context.Background(), threat); err != nil {
 		t.Fatalf("Handle failed: %v", err)
 	}
 
@@ -239,7 +240,7 @@ func TestResponderKilledState(t *testing.T) {
 	}
 
 	for _, threat := range threats {
-		if err := responder.Handle(threat); err != nil {
+		if err := responder.Handle(context.Background(), threat); err != nil {
 			t.Fatalf("Handle failed: %v", err)
 		}
 	}
@@ -311,7 +312,7 @@ func TestResponderThreatLevelActions(t *testing.T) {
 				Description: "Test description",
 			}
 
-			if err := responder.Handle(threat); err != nil {
+			if err := responder.Handle(context.Background(), threat); err != nil {
 				t.Fatalf("Handle failed: %v", err)
 			}
 

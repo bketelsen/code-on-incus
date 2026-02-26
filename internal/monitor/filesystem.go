@@ -154,7 +154,7 @@ func DetectLargeWrites(stats FilesystemStats, thresholdMB float64, rateThreshold
 // CollectDiskSpace gathers disk space stats for /tmp and other critical paths
 func CollectDiskSpace(ctx context.Context, containerName string) (tmpUsedMB, tmpTotalMB, tmpUsedPercent float64, err error) {
 	// Execute df command in container to get /tmp usage
-	output, err := container.IncusOutput("exec", containerName, "--", "df", "-BM", "/tmp")
+	output, err := container.IncusOutputContext(ctx, "exec", containerName, "--", "df", "-BM", "/tmp")
 	if err != nil {
 		return 0, 0, 0, err
 	}

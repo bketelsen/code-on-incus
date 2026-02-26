@@ -39,7 +39,7 @@ func GetCgroupPath(ctx context.Context, containerName string) (string, error) {
 // findCgroupPathViaIncus uses incus info to find the cgroup path
 func findCgroupPathViaIncus(ctx context.Context, containerName string) (string, error) {
 	// Get container info
-	output, err := container.IncusOutput("info", containerName)
+	output, err := container.IncusOutputContext(ctx, "info", containerName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get container info: %w", err)
 	}

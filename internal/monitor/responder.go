@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -48,7 +49,7 @@ func (r *Responder) SetOnAction(callback func(action, message string)) {
 }
 
 // Handle processes a threat and takes appropriate action
-func (r *Responder) Handle(threat ThreatEvent) error {
+func (r *Responder) Handle(ctx context.Context, threat ThreatEvent) error {
 	r.mu.Lock()
 
 	// If already killed, nothing more to do
@@ -111,7 +112,7 @@ func (r *Responder) Handle(threat ThreatEvent) error {
 			if err := r.logThreat(threat); err != nil {
 				return err
 			}
-			return r.pauseContainer()
+			return r.pauseContainer(ctx)
 		}
 		threat.Action = "alerted"
 		r.alert(threat)
@@ -124,7 +125,7 @@ func (r *Responder) Handle(threat ThreatEvent) error {
 			if err := r.logThreat(threat); err != nil {
 				return err
 			}
-			return r.killContainer()
+			return r.killContainer(ctx)
 		}
 		threat.Action = "alerted"
 		r.alert(threat)
@@ -150,7 +151,7 @@ func (r *Responder) alert(threat ThreatEvent) {
 }
 
 // pauseContainer pauses the container
-func (r *Responder) pauseContainer() error {
+func (r *Responder) pauseContainer(ctx context.Context) error {
 	r.mu.Lock()
 	if r.paused {
 		r.mu.Unlock()
@@ -160,7 +161,7 @@ func (r *Responder) pauseContainer() error {
 
 	// Use IncusOutputWithStderr to capture error messages from Incus
 	// (like "already frozen" which goes to stderr)
-	output, err := container.IncusOutputWithStderr("pause", r.containerName)
+	output, err := container.IncusOutputWithStderrContext(ctx, "pause", r.containerName)
 	if err != nil {
 		// Check if error is because container is already paused
 		// Incus returns "The container is already frozen" for this case
@@ -189,7 +190,7 @@ func (r *Responder) pauseContainer() error {
 }
 
 // killContainer stops and deletes the container
-func (r *Responder) killContainer() error {
+func (r *Responder) killContainer(ctx context.Context) error {
 	r.mu.Lock()
 	if r.killed {
 		r.mu.Unlock()
@@ -211,7 +212,7 @@ func (r *Responder) killContainer() error {
 	}
 
 	// First stop the container
-	_, err := container.IncusOutput("stop", r.containerName, "--force")
+	_, err := container.IncusOutputContext(ctx, "stop", r.containerName, "--force")
 	if err != nil {
 		return fmt.Errorf("failed to stop container: %w", err)
 	}
@@ -229,7 +230,7 @@ func (r *Responder) killContainer() error {
 	}
 
 	// Then delete it
-	_, err = container.IncusOutput("delete", r.containerName)
+	_, err = container.IncusOutputContext(ctx, "delete", r.containerName)
 	if err != nil {
 		return fmt.Errorf("failed to delete container: %w", err)
 	}

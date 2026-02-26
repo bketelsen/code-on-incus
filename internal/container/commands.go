@@ -2,6 +2,7 @@ package container
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -43,13 +44,36 @@ func execIncusCommand(cmdArgs []string) *exec.Cmd {
 	return exec.Command("sg", cmdArgs...)
 }
 
+// execIncusCommandContext creates a context-aware exec.Cmd for running incus commands.
+// On Linux, it wraps the command with sg for group permissions.
+// On macOS, it runs incus directly (no incus-admin group).
+//
+// WaitDelay is set so that when the context is cancelled, cmd.Wait returns
+// promptly instead of blocking until all child-process pipes are closed.
+func execIncusCommandContext(ctx context.Context, cmdArgs []string) *exec.Cmd {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "darwin" {
+		incusCmd := cmdArgs[2]
+		cmd = exec.CommandContext(ctx, "sh", "-c", incusCmd)
+	} else {
+		cmd = exec.CommandContext(ctx, "sg", cmdArgs...)
+	}
+	cmd.WaitDelay = time.Second
+	return cmd
+}
+
+// IncusExecContext executes an Incus command with context support
+func IncusExecContext(ctx context.Context, args ...string) error {
+	cmdArgs := buildIncusCommand(args...)
+	cmd := execIncusCommandContext(ctx, cmdArgs)
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 // IncusExec executes an Incus command via sg wrapper for group permissions (Linux) or directly (macOS)
 func IncusExec(args ...string) error {
-	cmdArgs := buildIncusCommand(args...)
-	cmd := execIncusCommand(cmdArgs)
-	cmd.Stdout = os.Stderr // Send stdout to stderr so it's visible
-	cmd.Stderr = os.Stderr // Show errors instead of silencing them
-	return cmd.Run()
+	return IncusExecContext(context.Background(), args...)
 }
 
 // IncusExecInteractive executes an Incus command with stdin/stdout/stderr attached
@@ -62,19 +86,24 @@ func IncusExecInteractive(args ...string) error {
 	return cmd.Run()
 }
 
-// IncusExecQuiet executes an Incus command silently (suppress stdout/stderr)
-func IncusExecQuiet(args ...string) error {
+// IncusExecQuietContext executes an Incus command silently with context support
+func IncusExecQuietContext(ctx context.Context, args ...string) error {
 	cmdArgs := buildIncusCommand(args...)
-	cmd := execIncusCommand(cmdArgs)
+	cmd := execIncusCommandContext(ctx, cmdArgs)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	return cmd.Run()
 }
 
-// IncusOutput executes an Incus command and returns the output (trimmed)
-func IncusOutput(args ...string) (string, error) {
+// IncusExecQuiet executes an Incus command silently (suppress stdout/stderr)
+func IncusExecQuiet(args ...string) error {
+	return IncusExecQuietContext(context.Background(), args...)
+}
+
+// IncusOutputContext executes an Incus command with context support and returns the output (trimmed)
+func IncusOutputContext(ctx context.Context, args ...string) (string, error) {
 	cmdArgs := buildIncusCommand(args...)
-	cmd := execIncusCommand(cmdArgs)
+	cmd := execIncusCommandContext(ctx, cmdArgs)
 
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
@@ -84,7 +113,36 @@ func IncusOutput(args ...string) (string, error) {
 	output := strings.TrimSpace(stdout.String())
 
 	if err != nil {
-		// Extract exit code if available
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return output, &ExitError{
+				ExitCode: exitErr.ExitCode(),
+				Err:      err,
+			}
+		}
+		return output, err
+	}
+
+	return output, nil
+}
+
+// IncusOutput executes an Incus command and returns the output (trimmed)
+func IncusOutput(args ...string) (string, error) {
+	return IncusOutputContext(context.Background(), args...)
+}
+
+// IncusOutputRawContext executes an Incus command with context support and returns the output (not trimmed)
+func IncusOutputRawContext(ctx context.Context, args ...string) (string, error) {
+	cmdArgs := buildIncusCommand(args...)
+	cmd := execIncusCommandContext(ctx, cmdArgs)
+
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = nil
+
+	err := cmd.Run()
+	output := stdout.String()
+
+	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return output, &ExitError{
 				ExitCode: exitErr.ExitCode(),
@@ -99,18 +157,22 @@ func IncusOutput(args ...string) (string, error) {
 
 // IncusOutputRaw executes an Incus command and returns the output (not trimmed)
 func IncusOutputRaw(args ...string) (string, error) {
-	cmdArgs := buildIncusCommand(args...)
-	cmd := execIncusCommand(cmdArgs)
+	return IncusOutputRawContext(context.Background(), args...)
+}
 
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = nil
+// IncusOutputWithStderrContext executes an Incus command with context support and returns combined stdout+stderr
+func IncusOutputWithStderrContext(ctx context.Context, args ...string) (string, error) {
+	cmdArgs := buildIncusCommand(args...)
+	cmd := execIncusCommandContext(ctx, cmdArgs)
+
+	var combined bytes.Buffer
+	cmd.Stdout = &combined
+	cmd.Stderr = &combined
 
 	err := cmd.Run()
-	output := stdout.String()
+	output := strings.TrimSpace(combined.String())
 
 	if err != nil {
-		// Extract exit code if available
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return output, &ExitError{
 				ExitCode: exitErr.ExitCode(),
@@ -126,18 +188,33 @@ func IncusOutputRaw(args ...string) (string, error) {
 // IncusOutputWithStderr executes an Incus command and returns combined stdout+stderr
 // This is useful when error messages from Incus need to be inspected (e.g., "already frozen")
 func IncusOutputWithStderr(args ...string) (string, error) {
-	cmdArgs := buildIncusCommand(args...)
-	cmd := execIncusCommand(cmdArgs)
+	return IncusOutputWithStderrContext(context.Background(), args...)
+}
 
-	var combined bytes.Buffer
-	cmd.Stdout = &combined
-	cmd.Stderr = &combined
+// IncusOutputWithArgsContext executes incus with raw args and context support (no additional wrapping)
+func IncusOutputWithArgsContext(ctx context.Context, args ...string) (string, error) {
+	// Build command with project flag
+	incusArgs := append([]string{"--project", IncusProject}, args...)
+
+	// Build properly quoted command
+	quotedArgs := make([]string, len(incusArgs))
+	for i, arg := range incusArgs {
+		quotedArgs[i] = shellQuote(arg)
+	}
+
+	incusCmd := "incus " + strings.Join(quotedArgs, " ")
+	sgArgs := []string{IncusGroup, "-c", incusCmd}
+
+	cmd := execIncusCommandContext(ctx, sgArgs)
+
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = nil
 
 	err := cmd.Run()
-	output := strings.TrimSpace(combined.String())
+	output := strings.TrimSpace(stdout.String())
 
 	if err != nil {
-		// Extract exit code if available
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return output, &ExitError{
 				ExitCode: exitErr.ExitCode(),
@@ -152,114 +229,19 @@ func IncusOutputWithStderr(args ...string) (string, error) {
 
 // IncusOutputWithArgs executes incus with raw args (no additional wrapping)
 func IncusOutputWithArgs(args ...string) (string, error) {
-	// Build command with project flag
-	incusArgs := append([]string{"--project", IncusProject}, args...)
+	return IncusOutputWithArgsContext(context.Background(), args...)
+}
 
-	// Build properly quoted command
-	quotedArgs := make([]string, len(incusArgs))
-	for i, arg := range incusArgs {
-		quotedArgs[i] = shellQuote(arg)
-	}
-
-	incusCmd := "incus " + strings.Join(quotedArgs, " ")
-	sgArgs := []string{IncusGroup, "-c", incusCmd}
-
-	cmd := execIncusCommand(sgArgs)
-
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = nil
-
-	err := cmd.Run()
-	output := strings.TrimSpace(stdout.String())
-
-	if err != nil {
-		// Extract exit code if available
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return output, &ExitError{
-				ExitCode: exitErr.ExitCode(),
-				Err:      err,
-			}
-		}
-		return output, err
-	}
-
-	return output, nil
+// IncusFilePushContext pushes a file into a container with context support
+func IncusFilePushContext(ctx context.Context, source, destination string) error {
+	cmdArgs := buildIncusCommand("file", "push", source, destination)
+	cmd := execIncusCommandContext(ctx, cmdArgs)
+	return cmd.Run()
 }
 
 // IncusFilePush pushes a file into a container
 func IncusFilePush(source, destination string) error {
-	cmdArgs := buildIncusCommand("file", "push", source, destination)
-	cmd := execIncusCommand(cmdArgs)
-	return cmd.Run()
-}
-
-// ContainerExecOptions holds options for executing commands in containers
-type ContainerExecOptions struct {
-	Sandbox       bool
-	RunAsRoot     bool
-	CaptureOutput bool
-	Env           map[string]string
-	Cwd           string
-	Timeout       *time.Duration
-}
-
-// ContainerExec executes a command inside a container with proper environment
-func ContainerExec(containerName, command string, opts ContainerExecOptions) (string, error) {
-	// Build command parts
-	args := []string{"exec", containerName}
-
-	// Set working directory
-	if opts.Cwd == "" {
-		opts.Cwd = "/workspace"
-	}
-	args = append(args, "--cwd", opts.Cwd)
-
-	// User context: run as code user by default
-	var envFlags []string
-	if !opts.RunAsRoot {
-		args = append(args, "--user", fmt.Sprintf("%d", CodeUID))
-		args = append(args, "--group", fmt.Sprintf("%d", CodeUID))
-		envFlags = append(envFlags, "--env", "HOME=/home/code")
-	}
-
-	// Sandbox mode
-	if opts.Sandbox {
-		envFlags = append(envFlags, "--env", "IS_SANDBOX=1")
-	}
-
-	// Additional environment variables
-	for k, v := range opts.Env {
-		envFlags = append(envFlags, "--env", fmt.Sprintf("%s=%s", k, v))
-	}
-
-	// Build full incus command
-	incusArgs := append([]string{"--project", IncusProject}, args...)
-	incusArgs = append(incusArgs, envFlags...)
-	incusArgs = append(incusArgs, "--", "bash", "-c", command)
-
-	// Build sg command
-	incusCmd := "incus " + strings.Join(incusArgs, " ")
-	sgArgs := []string{IncusGroup, "-c", incusCmd}
-
-	// Add timeout wrapper if specified
-	var cmd *exec.Cmd
-	if opts.Timeout != nil {
-		timeoutCmd := fmt.Sprintf("timeout %d %s", int(opts.Timeout.Seconds()), incusCmd)
-		timeoutSgArgs := []string{IncusGroup, "-c", timeoutCmd}
-		cmd = execIncusCommand(timeoutSgArgs)
-	} else {
-		cmd = execIncusCommand(sgArgs)
-	}
-
-	if opts.CaptureOutput {
-		var stdout bytes.Buffer
-		cmd.Stdout = &stdout
-		err := cmd.Run()
-		return strings.TrimSpace(stdout.String()), err
-	}
-
-	return "", cmd.Run()
+	return IncusFilePushContext(context.Background(), source, destination)
 }
 
 // LaunchContainer launches an ephemeral container
