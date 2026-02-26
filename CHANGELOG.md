@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Bug Fixes
+
+- [Bug Fix] **Incus config values now applied to command execution** - Fixed `incus.project`, `incus.group`, `incus.code_uid`, and `incus.code_user` config settings being ignored. These values were defined as hardcoded constants in the container package while the config struct had matching fields that were never wired in. The constants are now package-level variables initialized from the loaded config via `container.Configure()`, so custom TOML settings (e.g., `incus.project = "myproject"`) take effect on all Incus command execution.
+
+- [Bug Fix] **Settings.json merge now preserves user env vars** - Fixed sandbox settings merge overwriting user's `env` section in `settings.json`. The shallow `dict.update()` replaced the entire `env` dict, losing user-configured environment variables (e.g., AWS Bedrock settings like `AWS_PROFILE`). Changed to deep merge so nested dicts like `env` are merged key-by-key instead of replaced wholesale.
+
 ### Features
 
 - [Feature] **Preserve workspace path option** - Added `preserve_workspace_path` config option that mounts the workspace at the same absolute path inside the container as on the host, instead of `/workspace`. This is useful for tools like opencode that store session data relative to the workspace directory, allowing sessions to persist correctly when the same project is opened from different machines or after container recreation. Configure with `[paths] preserve_workspace_path = true` in `~/.config/coi/config.toml` or `.coi.toml`. Off by default. Fixes #108.
