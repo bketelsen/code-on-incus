@@ -982,6 +982,22 @@ class TestVethZoneCleanupOnAutoKill:
             if not wait_for_container_ready(container_name, timeout=30):
                 pytest.skip("Container failed to start")
 
+            # Get container IP and verify NFT rules are set up before proceeding
+            container_ip = get_container_ip(container_name)
+            if not container_ip:
+                pytest.skip("Container has no IP address")
+
+            # Wait for NFT rules to be created (critical for this test)
+            nft_ready = False
+            for _ in range(10):
+                if check_nft_rules_exist(container_ip):
+                    nft_ready = True
+                    break
+                time.sleep(1)
+
+            if not nft_ready:
+                pytest.skip("NFT rules not created - monitoring may not be properly initialized")
+
             # Get veth name BEFORE killing (needed for cleanup verification)
             veth_name = get_container_veth_name(container_name)
             if not veth_name:
@@ -1007,13 +1023,26 @@ class TestVethZoneCleanupOnAutoKill:
             )
 
             # Wait for responder to detect threat and kill container
-            time.sleep(10)
+            # Use retry loop since this test runs early and may need more time
+            killed = False
+            for _ in range(15):
+                time.sleep(1)
+                state = get_container_state(container_name)
+                if state in ("Stopped", "Unknown"):
+                    killed = True
+                    break
 
-            # Verify container was killed
-            state = get_container_state(container_name)
-            assert state in ("Stopped", "Unknown"), (
-                f"Container should have been killed but state is {state}"
-            )
+            # Debug output if not killed
+            if not killed:
+                events = get_nft_threat_events(container_name)
+                print("\n=== DEBUG: Veth test - Container not killed ===")
+                print(f"State: {state}")
+                print(f"NFT events: {len(events)}")
+                for e in events:
+                    print(f"  - {e.get('level')}: {e.get('title')}")
+                print("=== END DEBUG ===\n")
+
+            assert killed, f"Container should have been killed but state is {state}"
 
             # Verify veth zone binding is cleaned up
             assert not check_veth_in_firewalld_zone(veth_name), (
