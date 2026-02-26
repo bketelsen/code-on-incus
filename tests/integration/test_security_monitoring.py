@@ -256,14 +256,20 @@ class TestThreatDetection:
             stderr=subprocess.DEVNULL,
         )
 
-        time.sleep(8)
-
         container_name = get_container_name_from_workspace(test_workspace).rsplit("-", 1)[0] + "-2"
 
-        state = get_container_state(container_name)
-        if state == "Unknown":
+        # Wait for container to be running
+        container_ready = False
+        for _ in range(30):
+            state = get_container_state(container_name)
+            if state == "Running":
+                container_ready = True
+                break
+            time.sleep(1)
+
+        if not container_ready:
             proc.terminate()
-            pytest.skip(f"Container {container_name} not found")
+            pytest.skip(f"Container {container_name} not found or not running")
 
         # Inject env scanning command
         subprocess.Popen(
@@ -280,17 +286,33 @@ class TestThreatDetection:
             stderr=subprocess.DEVNULL,
         )
 
-        # Wait for detection
-        time.sleep(5)
+        # Poll for WARNING event in audit log
+        warning_found = False
+        for _ in range(15):
+            time.sleep(1)
+            events = get_threat_events(container_name)
+            warnings = [e for e in events if e.get("level") == "warning"]
+            if len(warnings) > 0:
+                warning_found = True
+                break
 
         # Container should still be running (WARNING doesn't kill)
         state = get_container_state(container_name)
         assert state == "Running", f"Expected Running on WARNING, got {state}"
 
-        # Verify WARNING event
-        events = get_threat_events(container_name)
-        warnings = [e for e in events if e.get("level") == "warning"]
-        assert len(warnings) > 0, "Expected WARNING event for env scanning"
+        if not warning_found:
+            events = get_threat_events(container_name)
+            print("\n=== DEBUG: env scanning test - no warning found ===")
+            print(f"Container state: {state}")
+            print(f"Total threat events: {len(events)}")
+            for event in events:
+                print(
+                    f"  - level={event.get('level')}, category={event.get('category')}, "
+                    f"desc={event.get('description', 'N/A')[:80]}"
+                )
+            print("=== END DEBUG ===\n")
+
+        assert warning_found, "Expected WARNING event for env scanning"
 
         proc.terminate()
         cleanup_container(container_name, coi_binary)

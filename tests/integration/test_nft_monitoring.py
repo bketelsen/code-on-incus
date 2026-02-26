@@ -196,19 +196,22 @@ class TestNFTRuleManagement:
 
         try:
             # Wait for container to be ready
-            time.sleep(10)
-
-            if not wait_for_container_ready(container_name, timeout=30):
+            if not wait_for_container_ready(container_name, timeout=60):
                 pytest.skip("Container failed to start")
 
             container_ip = get_container_ip(container_name)
             if not container_ip:
                 pytest.skip("Container has no IP address")
 
-            # Check for NFT rules
-            assert check_nft_rules_exist(container_ip), (
-                f"NFT monitoring rules not found for IP {container_ip}"
-            )
+            # Poll for NFT rules (may take a moment after container is running)
+            nft_ready = False
+            for _ in range(15):
+                if check_nft_rules_exist(container_ip):
+                    nft_ready = True
+                    break
+                time.sleep(1)
+
+            assert nft_ready, f"NFT monitoring rules not found for IP {container_ip}"
         finally:
             proc.terminate()
             proc.wait(timeout=10)

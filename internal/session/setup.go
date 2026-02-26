@@ -611,7 +611,7 @@ func injectCredentials(mgr *container.Manager, hostCLIConfigPath, homeDir string
 					// Properly escape the JSON string for shell command
 					escapedJSON := strings.ReplaceAll(settingsJSON, "'", "'\"'\"'")
 					injectCmd := fmt.Sprintf(
-						`python3 -c 'import json; f=open("%s","r+"); d=json.load(f); updates=json.loads('"'"'%s'"'"'); d.update(updates); f.seek(0); json.dump(d,f,indent=2); f.truncate()'`,
+						`python3 -c 'import json; f=open("%s","r+"); d=json.load(f); updates=json.loads('"'"'%s'"'"'); [d.setdefault(k,{}).update(v) if isinstance(v,dict) and isinstance(d.get(k),dict) else d.__setitem__(k,v) for k,v in updates.items()]; f.seek(0); json.dump(d,f,indent=2); f.truncate()'`,
 						stateJsonDest,
 						escapedJSON,
 					)
@@ -696,7 +696,7 @@ func setupCLIConfig(mgr *container.Manager, hostCLIConfigPath, homeDir string, t
 				// Properly escape the JSON string for shell command
 				escapedJSON := strings.ReplaceAll(settingsJSON, "'", "'\"'\"'")
 				injectCmd := fmt.Sprintf(
-					`python3 -c 'import json; f=open("%s","r+"); d=json.load(f); updates=json.loads('"'"'%s'"'"'); d.update(updates); f.seek(0); json.dump(d,f,indent=2); f.truncate()'`,
+					`python3 -c 'import json; f=open("%s","r+"); d=json.load(f); updates=json.loads('"'"'%s'"'"'); [d.setdefault(k,{}).update(v) if isinstance(v,dict) and isinstance(d.get(k),dict) else d.__setitem__(k,v) for k,v in updates.items()]; f.seek(0); json.dump(d,f,indent=2); f.truncate()'`,
 					settingsPath,
 					escapedJSON,
 				)
@@ -738,7 +738,7 @@ func setupCLIConfig(mgr *container.Manager, hostCLIConfigPath, homeDir string, t
 				// Properly escape the JSON string for shell command
 				escapedJSON := strings.ReplaceAll(settingsJSON, "'", "'\"'\"'")
 				injectCmd := fmt.Sprintf(
-					`python3 -c 'import json; f=open("%s","r+"); d=json.load(f); updates=json.loads('"'"'%s'"'"'); d.update(updates); f.seek(0); json.dump(d,f,indent=2); f.truncate()'`,
+					`python3 -c 'import json; f=open("%s","r+"); d=json.load(f); updates=json.loads('"'"'%s'"'"'); [d.setdefault(k,{}).update(v) if isinstance(v,dict) and isinstance(d.get(k),dict) else d.__setitem__(k,v) for k,v in updates.items()]; f.seek(0); json.dump(d,f,indent=2); f.truncate()'`,
 					stateJsonDest,
 					escapedJSON,
 				)
@@ -845,7 +845,7 @@ func setupHomeConfigFile(mgr *container.Manager, hostConfigFilePath, homeDir str
 			} else {
 				escapedJSON := strings.ReplaceAll(settingsJSON, "'", "'\"'\"'")
 				mergeCmd := fmt.Sprintf(
-					`python3 -c 'import json; f=open("%s","r+"); d=json.load(f); updates=json.loads('"'"'%s'"'"'); d.update(updates); f.seek(0); json.dump(d,f,indent=2); f.truncate()'`,
+					`python3 -c 'import json; f=open("%s","r+"); d=json.load(f); updates=json.loads('"'"'%s'"'"'); [d.setdefault(k,{}).update(v) if isinstance(v,dict) and isinstance(d.get(k),dict) else d.__setitem__(k,v) for k,v in updates.items()]; f.seek(0); json.dump(d,f,indent=2); f.truncate()'`,
 					destPath, escapedJSON)
 				if _, err := mgr.ExecCommand(mergeCmd, container.ExecCommandOptions{Capture: true}); err != nil {
 					logger(fmt.Sprintf("Warning: Failed to inject settings into %s: %v", twh.HomeConfigFileName(), err))
