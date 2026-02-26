@@ -8,6 +8,7 @@
 # - Claude CLI
 # - Docker
 # - GitHub CLI
+# - Homebrew
 # - dummy (test stub for testing)
 
 set -euo pipefail
@@ -288,6 +289,33 @@ install_github_cli() {
 }
 
 #######################################
+# Install Homebrew (Linuxbrew)
+# See: https://brew.sh
+#######################################
+install_homebrew() {
+    log "Installing Homebrew..."
+
+    # Homebrew on Linux needs procps and file beyond our base deps
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq procps file
+
+    # Run the official installer non-interactively as the code user
+    su - "$CODE_USER" -c 'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+
+    # Verify installation
+    local BREW_PATH="/home/linuxbrew/.linuxbrew/bin/brew"
+    if [[ ! -x "$BREW_PATH" ]]; then
+        log "ERROR: brew not found at $BREW_PATH after installation."
+        log "Installation may have failed or installed to an unexpected location."
+        exit 1
+    fi
+
+    # Add brew to code user's shell environment (sets PATH, MANPATH, INFOPATH)
+    echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> "/home/$CODE_USER/.bashrc"
+
+    log "Homebrew $($BREW_PATH --version 2>/dev/null | head -1 || echo 'installed')"
+}
+
+#######################################
 # Configure /tmp auto-cleanup
 #
 # By default Ubuntu's systemd-tmpfiles-clean.timer runs daily and only
@@ -356,6 +384,7 @@ main() {
     install_dummy
     install_docker
     install_github_cli
+    install_homebrew
     cleanup
 
     log "coi image build complete!"
