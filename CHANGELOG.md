@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Refactoring
+
+- [Refactoring] **Decompose shell.go duplicated code** - Extracted three helper functions (`buildCLICommand`, `buildContainerEnv`, `ensureTmuxServer`) from `runCLI()` and `runCLIInTmux()` to eliminate ~76 lines of duplicated code. Also removed a redundant second tmux server-polling loop in the interactive branch of `runCLIInTmux()`. Pure refactoring with no behavioral changes.
+
 ### Bug Fixes
 
 - [Bug Fix] **Incus config values now applied to command execution** - Fixed `incus.project`, `incus.group`, `incus.code_uid`, and `incus.code_user` config settings being ignored. These values were defined as hardcoded constants in the container package while the config struct had matching fields that were never wired in. The constants are now package-level variables initialized from the loaded config via `container.Configure()`, so custom TOML settings (e.g., `incus.project = "myproject"`) take effect on all Incus command execution.

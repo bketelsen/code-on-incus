@@ -450,58 +450,58 @@ func getConfiguredTool(cfg *config.Config) (tool.Tool, error) {
 	return t, nil
 }
 
-// runCLI executes the CLI tool in the container interactively
-func runCLI(result *session.SetupResult, sessionID string, useResumeFlag, restoreOnly bool, sessionsDir, resumeID string, t tool.Tool) error {
-	// Build command - either bash for debugging or CLI tool
-	var cmdToRun string
+// buildCLICommand builds the CLI command string to execute in the container.
+// It handles debug shell mode, session ID discovery, tool command building, and dummy mode override.
+func buildCLICommand(sessionID string, useResumeFlag, restoreOnly bool, sessionsDir, resumeID string, t tool.Tool) string {
 	if debugShell {
-		// Debug mode: launch interactive bash
-		cmdToRun = "bash"
-	} else {
-		// Determine resume mode and CLI session ID
-		var cliSessionID string
-		if useResumeFlag || restoreOnly {
-			// Try to discover the tool's internal session ID from saved state
-			// The exact discovery mechanism is tool-specific (e.g. some tools read
-			// config files, others use environment variables) and may return ""
-			// if no previous session can be found (start fresh).
-			var sessionStatePath string
-			if configDir := t.ConfigDirName(); configDir != "" {
-				sessionStatePath = filepath.Join(sessionsDir, resumeID, configDir)
-			} else {
-				sessionStatePath = filepath.Join(sessionsDir, resumeID)
-			}
-			cliSessionID = t.DiscoverSessionID(sessionStatePath)
-		}
-
-		// Build command using tool abstraction
-		// This handles tool-specific flags (--verbose, --permission-mode, etc.)
-		cmd := t.BuildCommand(sessionID, useResumeFlag || restoreOnly, cliSessionID)
-
-		// Handle dummy mode override (for testing)
-		if getEnvValue("COI_USE_DUMMY") == "1" {
-			if len(cmd) > 0 {
-				cmd[0] = "dummy"
-			}
-			fmt.Fprintf(os.Stderr, "Using dummy (test stub) for faster testing\n")
-		}
-
-		cmdToRun = strings.Join(cmd, " ")
+		return "bash"
 	}
 
-	// Execute in container
+	// Determine resume mode and CLI session ID
+	var cliSessionID string
+	if useResumeFlag || restoreOnly {
+		// Try to discover the tool's internal session ID from saved state
+		// The exact discovery mechanism is tool-specific (e.g. some tools read
+		// config files, others use environment variables) and may return ""
+		// if no previous session can be found (start fresh).
+		var sessionStatePath string
+		if configDir := t.ConfigDirName(); configDir != "" {
+			sessionStatePath = filepath.Join(sessionsDir, resumeID, configDir)
+		} else {
+			sessionStatePath = filepath.Join(sessionsDir, resumeID)
+		}
+		cliSessionID = t.DiscoverSessionID(sessionStatePath)
+	}
+
+	// Build command using tool abstraction
+	// This handles tool-specific flags (--verbose, --permission-mode, etc.)
+	cmd := t.BuildCommand(sessionID, useResumeFlag || restoreOnly, cliSessionID)
+
+	// Handle dummy mode override (for testing)
+	if getEnvValue("COI_USE_DUMMY") == "1" {
+		if len(cmd) > 0 {
+			cmd[0] = "dummy"
+		}
+		fmt.Fprintf(os.Stderr, "Using dummy (test stub) for faster testing\n")
+	}
+
+	return strings.Join(cmd, " ")
+}
+
+// buildContainerEnv constructs the environment variables map and user pointer for container execution.
+// It sets HOME, TERM (sanitized), IS_SANDBOX, merges user-provided --env vars, and re-sanitizes TERM
+// if overridden.
+func buildContainerEnv(result *session.SetupResult) (map[string]string, *int) {
 	user := container.CodeUID
 	if result.RunAsRoot {
 		user = 0
 	}
-
 	userPtr := &user
 
-	// Build environment variables
 	containerEnv := map[string]string{
 		"HOME":       result.HomeDir,
-		"TERM":       terminal.SanitizeTerm(os.Getenv("TERM")), // Use sanitized terminal type
-		"IS_SANDBOX": "1",                                      // Always set sandbox mode
+		"TERM":       terminal.SanitizeTerm(os.Getenv("TERM")),
+		"IS_SANDBOX": "1",
 	}
 
 	// Merge user-provided --env vars
@@ -516,6 +516,35 @@ func runCLI(result *session.SetupResult, sessionID string, useResumeFlag, restor
 	if userTerm, exists := containerEnv["TERM"]; exists {
 		containerEnv["TERM"] = terminal.SanitizeTerm(userTerm)
 	}
+
+	return containerEnv, userPtr
+}
+
+// ensureTmuxServer starts the tmux server and polls until it is ready (up to 2 seconds).
+// This is critical in CI and for newly started containers where the tmux server might not be running yet.
+func ensureTmuxServer(mgr *container.Manager, userPtr *int) {
+	serverStartCmd := "tmux start-server 2>/dev/null || true; sleep 0.1"
+	serverOpts := container.ExecCommandOptions{
+		Capture: true,
+		User:    userPtr,
+	}
+	_, _ = mgr.ExecCommand(serverStartCmd, serverOpts) // Best-effort server start.
+
+	// Poll to ensure server is ready (up to 2 seconds)
+	for i := 0; i < 20; i++ {
+		checkServerCmd := "tmux list-sessions 2>&1 | grep -v 'no server running' || true"
+		_, err := mgr.ExecCommand(checkServerCmd, serverOpts)
+		if err == nil {
+			break // Server is ready
+		}
+		_, _ = mgr.ExecCommand("sleep 0.1", serverOpts) // Best-effort sleep.
+	}
+}
+
+// runCLI executes the CLI tool in the container interactively
+func runCLI(result *session.SetupResult, sessionID string, useResumeFlag, restoreOnly bool, sessionsDir, resumeID string, t tool.Tool) error {
+	cmdToRun := buildCLICommand(sessionID, useResumeFlag, restoreOnly, sessionsDir, resumeID, t)
+	containerEnv, userPtr := buildContainerEnv(result)
 
 	workspacePath := result.ContainerWorkspacePath
 	if workspacePath == "" {
@@ -542,71 +571,8 @@ func runCLIInTmux(result *session.SetupResult, sessionID string, detached bool, 
 		workspacePath = "/workspace"
 	}
 
-	// Build CLI command
-	var cliCmd string
-	if debugShell {
-		// Debug mode: launch interactive bash
-		cliCmd = "bash"
-	} else {
-		// Determine resume mode and CLI session ID
-		var cliSessionID string
-		if useResumeFlag || restoreOnly {
-			// Try to discover the tool's internal session ID from saved state
-			// The exact discovery mechanism is tool-specific (e.g. some tools read
-			// config files, others use environment variables) and may return ""
-			// if no previous session can be found (start fresh).
-			var sessionStatePath string
-			if configDir := t.ConfigDirName(); configDir != "" {
-				sessionStatePath = filepath.Join(sessionsDir, resumeID, configDir)
-			} else {
-				sessionStatePath = filepath.Join(sessionsDir, resumeID)
-			}
-			cliSessionID = t.DiscoverSessionID(sessionStatePath)
-		}
-
-		// Build command using tool abstraction
-		// This handles tool-specific flags (--verbose, --permission-mode, etc.)
-		cmd := t.BuildCommand(sessionID, useResumeFlag || restoreOnly, cliSessionID)
-
-		// Handle dummy mode override (for testing)
-		if getEnvValue("COI_USE_DUMMY") == "1" {
-			if len(cmd) > 0 {
-				cmd[0] = "dummy"
-			}
-			fmt.Fprintf(os.Stderr, "Using dummy (test stub) for faster testing\n")
-		}
-
-		cliCmd = strings.Join(cmd, " ")
-	}
-
-	// Build environment variables
-	user := container.CodeUID
-	if result.RunAsRoot {
-		user = 0
-	}
-	userPtr := &user
-
-	// Get TERM with fallback
-	termEnv := terminal.SanitizeTerm(os.Getenv("TERM"))
-
-	containerEnv := map[string]string{
-		"HOME":       result.HomeDir,
-		"TERM":       termEnv,
-		"IS_SANDBOX": "1", // Always set sandbox mode
-	}
-
-	// Merge user-provided --env vars
-	for _, e := range envVars {
-		parts := strings.SplitN(e, "=", 2)
-		if len(parts) == 2 {
-			containerEnv[parts[0]] = parts[1]
-		}
-	}
-
-	// Sanitize TERM if user explicitly provided it via -e flag
-	if userTerm, exists := containerEnv["TERM"]; exists {
-		containerEnv["TERM"] = terminal.SanitizeTerm(userTerm)
-	}
+	cliCmd := buildCLICommand(sessionID, useResumeFlag, restoreOnly, sessionsDir, resumeID, t)
+	containerEnv, userPtr := buildContainerEnv(result)
 
 	// Build environment export commands for tmux
 	envExports := ""
@@ -615,23 +581,7 @@ func runCLIInTmux(result *session.SetupResult, sessionID string, detached bool, 
 	}
 
 	// Ensure tmux server is running first (critical for CI and new containers)
-	// In constrained CI environments, wait for the server to be ready
-	serverStartCmd := "tmux start-server 2>/dev/null || true; sleep 0.1"
-	serverOpts := container.ExecCommandOptions{
-		Capture: true,
-		User:    userPtr,
-	}
-	_, _ = result.Manager.ExecCommand(serverStartCmd, serverOpts) // Best-effort server start.
-
-	// Poll to ensure server is ready (up to 2 seconds)
-	for i := 0; i < 20; i++ {
-		checkServerCmd := "tmux list-sessions 2>&1 | grep -v 'no server running' || true"
-		_, err := result.Manager.ExecCommand(checkServerCmd, serverOpts)
-		if err == nil {
-			break // Server is ready
-		}
-		_, _ = result.Manager.ExecCommand("sleep 0.1", serverOpts) // Best-effort sleep.
-	}
+	ensureTmuxServer(result.Manager, userPtr)
 
 	// Check if tmux session already exists
 	checkSessionCmd := fmt.Sprintf("tmux has-session -t %s 2>/dev/null", tmuxSessionName)
@@ -701,33 +651,8 @@ func runCLIInTmux(result *session.SetupResult, sessionID string, detached bool, 
 		// When we detach, only the attach process exits, not the session
 		// trap : INT prevents bash from exiting on Ctrl+C, exec bash replaces (no nested shells)
 
-		// Step 0: Ensure tmux server is running (required for all tmux operations)
-		// This is critical in CI and for newly started containers where tmux server
-		// might not be running yet. The command is idempotent - if server is already
-		// running, it does nothing. We redirect stderr and use || true to ignore errors.
-		//
-		// In constrained CI environments, we need to wait for the server to be ready.
-		// We start the server and then verify it's responsive by polling.
-		serverStartCmd := "tmux start-server 2>/dev/null || true; sleep 0.1"
-		serverOpts := container.ExecCommandOptions{
-			User:    userPtr,
-			Capture: true,
-		}
-		_, _ = result.Manager.ExecCommand(serverStartCmd, serverOpts) // Best-effort server start.
-
-		// Poll to ensure server is ready (up to 2 seconds)
-		// This prevents race conditions in CI where the server takes time to initialize
-		for i := 0; i < 20; i++ {
-			checkServerCmd := "tmux list-sessions 2>&1 | grep -v 'no server running' || true"
-			_, err := result.Manager.ExecCommand(checkServerCmd, serverOpts)
-			if err == nil {
-				break // Server is ready (even if no sessions exist)
-			}
-			// Wait 100ms before next attempt
-			_, _ = result.Manager.ExecCommand("sleep 0.1", serverOpts) // Best-effort sleep.
-		}
-
-		// Step 1: Check if session already exists
+		// Check if session already exists (it was checked above but may have been
+		// created by another process in the meantime)
 		checkCmd := fmt.Sprintf("tmux has-session -t %s 2>/dev/null", tmuxSessionName)
 		checkOpts := container.ExecCommandOptions{
 			User:    userPtr,
@@ -735,7 +660,7 @@ func runCLIInTmux(result *session.SetupResult, sessionID string, detached bool, 
 		}
 		_, checkErr := result.Manager.ExecCommand(checkCmd, checkOpts)
 
-		// Step 2: Create detached session if it doesn't exist
+		// Create detached session if it doesn't exist
 		if checkErr != nil {
 			createCmd := fmt.Sprintf(
 				"tmux new-session -d -s %s -c %s \"bash -c 'trap : INT; %s %s; exec bash'\"",
@@ -757,7 +682,7 @@ func runCLIInTmux(result *session.SetupResult, sessionID string, detached bool, 
 			time.Sleep(500 * time.Millisecond)
 		}
 
-		// Step 3: Attach to the session
+		// Attach to the session
 		attachCmd := fmt.Sprintf("tmux attach -t %s", tmuxSessionName)
 		attachOpts := container.ExecCommandOptions{
 			User:        userPtr,
