@@ -65,6 +65,4 @@ def test_default_code_uid_without_config(coi_binary, cleanup_containers, workspa
     assert result.returncode == 0, f"Run should succeed. stderr: {result.stderr}"
 
     combined_output = result.stdout + result.stderr
-    assert "1000" in combined_output, (
-        f"Should run with default UID 1000. Got:\n{combined_output}"
-    )
+    assert "1000" in combined_output, f"Should run with default UID 1000. Got:\n{combined_output}"
