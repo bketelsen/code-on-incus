@@ -667,6 +667,39 @@ func setupCLIConfig(mgr *container.Manager, hostCLIConfigPath, homeDir string, t
 		}
 	}
 
+	// Copy essential subdirectories (e.g., plugins/ for Claude Code global plugins)
+	essentialDirs := []string{
+		"plugins",
+		"hooks",
+	}
+	for _, dirname := range essentialDirs {
+		srcDir := filepath.Join(hostCLIConfigPath, dirname)
+		destDir := filepath.Join(stateDir, dirname)
+		if info, err := os.Stat(srcDir); err == nil && info.IsDir() {
+			logger(fmt.Sprintf("  - Copying %s/ directory", dirname))
+			if err := mgr.PushDirectory(srcDir, destDir); err != nil {
+				logger(fmt.Sprintf("  - Warning: Failed to copy %s/ directory: %v", dirname, err))
+			}
+		} else {
+			logger(fmt.Sprintf("  - Skipping %s/ (not found)", dirname))
+		}
+	}
+
+	// Rewrite host home paths to container home paths across all copied config files
+	// e.g., /home/bjk/.claude/hooks/... → /home/code/.claude/hooks/...
+	// This covers settings.json, known_marketplaces.json, installed_plugins.json, etc.
+	hostHomeDir := filepath.Dir(hostCLIConfigPath)
+	if hostHomeDir != homeDir {
+		logger(fmt.Sprintf("Rewriting paths in config files: %s → %s", hostHomeDir, homeDir))
+		rewriteCmd := fmt.Sprintf(
+			`find %s -name '*.json' -exec sed -i 's|%s|%s|g' {} +`,
+			stateDir, hostHomeDir, homeDir,
+		)
+		if _, err := mgr.ExecCommand(rewriteCmd, container.ExecCommandOptions{Capture: true}); err != nil {
+			logger(fmt.Sprintf("Warning: Failed to rewrite paths in config files: %v", err))
+		}
+	}
+
 	// Get sandbox settings from tool and merge into settings.json if needed
 	sandboxSettings := t.GetSandboxSettings()
 	if len(sandboxSettings) > 0 {

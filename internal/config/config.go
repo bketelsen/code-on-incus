@@ -219,7 +219,7 @@ func GetDefaultConfig() *Config {
 			CodeUser: "code",
 		},
 		Network: NetworkConfig{
-			Mode:                  NetworkModeRestricted,
+			Mode:                  NetworkModeOpen,
 			BlockPrivateNetworks:  true,
 			BlockMetadataEndpoint: true,
 			AllowedDomains: []string{
