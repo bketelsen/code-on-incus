@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/mensfeld/code-on-incus/internal/config"
+	"github.com/mensfeld/code-on-incus/internal/container"
 	"github.com/spf13/cobra"
 )
 
@@ -84,6 +85,9 @@ Examples:
 				return fmt.Errorf("profile '%s' not found", profile)
 			}
 		}
+
+		// Apply Incus configuration from config file
+		container.Configure(cfg.Incus.Project, cfg.Incus.Group, cfg.Incus.CodeUser, cfg.Incus.CodeUID)
 
 		// Apply config defaults to flags that weren't explicitly set
 		if !cmd.Flags().Changed("persistent") {
