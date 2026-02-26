@@ -90,7 +90,7 @@ func (d *Daemon) run() {
 
 			// Handle threats
 			for _, threat := range threats {
-				if err := d.responder.Handle(threat); err != nil {
+				if err := d.responder.Handle(d.ctx, threat); err != nil {
 					if d.config.OnError != nil {
 						d.config.OnError(fmt.Errorf("threat response failed: %w", err))
 					}

@@ -12,7 +12,7 @@ import (
 // CollectProcessStats collects running processes from the container
 func CollectProcessStats(ctx context.Context, containerName string) (ProcessStats, error) {
 	// Execute: incus exec <container> -- ps aux
-	output, err := container.IncusOutput("exec", containerName, "--", "ps", "aux")
+	output, err := container.IncusOutputContext(ctx, "exec", containerName, "--", "ps", "aux")
 	if err != nil {
 		return ProcessStats{Available: false}, fmt.Errorf("failed to execute ps: %w", err)
 	}
