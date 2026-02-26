@@ -301,7 +301,8 @@ install_homebrew() {
     # Run the official installer non-interactively as the code user
     su - "$CODE_USER" -c 'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
 
-    # Verify installation
+    # Verify installation (Homebrew installs to /home/linuxbrew/.linuxbrew
+    # system-wide, not per-user like Claude CLI or opencode)
     local BREW_PATH="/home/linuxbrew/.linuxbrew/bin/brew"
     if [[ ! -x "$BREW_PATH" ]]; then
         log "ERROR: brew not found at $BREW_PATH after installation."
@@ -311,6 +312,7 @@ install_homebrew() {
 
     # Add brew to code user's shell environment (sets PATH, MANPATH, INFOPATH)
     echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> "/home/$CODE_USER/.bashrc"
+    echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> "/home/$CODE_USER/.profile"
 
     log "Homebrew $($BREW_PATH --version 2>/dev/null | head -1 || echo 'installed')"
 }
